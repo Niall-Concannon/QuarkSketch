@@ -1,0 +1,26 @@
+QuarkSketch User Stories Daniels Week1
+Main Menu
+
+As a player, I want to see the QuarkSketch logo when I open the game so I know what app I'm in.
+As a player, I want to click Single Player so I can start drawing on my own.
+As a player, I want to see a Multiplayer button so I know the option exists even if it's not ready yet.
+As a player, I want to see a Leaderboard button so I can look forward to competing with others later.
+As a player, I want to open Settings from the main menu so I can change how the game looks.
+
+Settings
+
+As a player, I want to turn on dark mode so the game is easier on my eyes at night.
+As a player, I want to close the settings panel and go back to the menu without losing my preferences.
+
+Drawing Canvas
+
+As a player, I want to draw on a canvas with a marker so I can start sketching right away.
+As a player, I want the drawing to work with touch so I can play on my phone or tablet.
+As a player, I want the canvas to fill the screen so I have as much space as possible to draw.
+As a player, I want a toolbar on the side so I can see what tools are available and select them.
+As a player, I want a back button on the canvas screen so I can return to the main menu easily.
+
+Mobile / Device
+
+As a player on mobile, I want the game to be in landscape so the canvas is wide enough to draw on.
+As a player on mobile, I want to see a message telling me to rotate my device if I open it in portrait so I'm not confused by a broken layout.

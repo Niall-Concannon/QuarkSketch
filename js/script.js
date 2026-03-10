@@ -70,6 +70,8 @@ function drawingScreen() {
   const canvas = el("canvas", { class: "draw-canvas" });
   const ctx = canvas.getContext("2d");
 
+  let currentColor = "#1a1a2e"; // marker colour — black
+
   // fit the canvas to whatever space it has, and keep the drawing if the window resizes
   function resizeCanvas() {
     const rect = canvas.getBoundingClientRect();
@@ -107,7 +109,7 @@ function drawingScreen() {
     ctx.beginPath();
     ctx.moveTo(lastX, lastY);
     ctx.lineTo(x, y);
-    ctx.strokeStyle = "#1a1a2e"; // marker colour — black
+    ctx.strokeStyle = currentColor;
     ctx.lineWidth   = 4;
     ctx.lineCap     = "round";
     ctx.lineJoin    = "round";
@@ -132,9 +134,53 @@ function drawingScreen() {
   canvas.addEventListener("touchmove",   draw,      { passive: false });
   canvas.addEventListener("touchend",    stopDraw,  { passive: false });
 
+  const colorPanel = el("div", { style: "display:none; flex-direction:column; gap:6px;" },
+
+  el("button", {
+    class: "tool-btn",
+    onclick() { currentColor = "#1a1a2e"; colorPanel.style.display = "none"; } //Black
+  }, "⚫"),
+
+  el("button", {
+    class: "tool-btn",
+    onclick() { currentColor = "#ff4d4d"; colorPanel.style.display = "none"; } //Red
+  }, "🔴"),
+
+  el("button", {
+    class: "tool-btn",
+    onclick() { currentColor = "#3b82f6"; colorPanel.style.display = "none"; } // Blue
+  }, "🔵"),
+
+  el("button", {
+    class: "tool-btn",
+    onclick() { currentColor = "#22c55e"; colorPanel.style.display = "none"; } // Green
+  }, "🟢"),
+
+  el("button", {
+  class: "tool-btn",
+  onclick() { currentColor = "#facc15"; colorPanel.style.display = "none"; } // Yellow
+}, "🟡"),
+
+el("button", {
+  class: "tool-btn",
+  onclick() { currentColor = "#f97316"; colorPanel.style.display = "none"; } // Orange
+}, "🟠"),
+
+el("button", {
+  class: "tool-btn",
+  onclick() { currentColor = "#a855f7"; colorPanel.style.display = "none"; } // Purple
+}, "🟣")
+);
+  
   // tool sidebar — only the marker for now, more tools get added here later
   const sidebar = el("div", { class: "tool-sidebar" },
-    el("button", { class: "tool-btn tool-active", title: "Marker" }, "✏️"),
+    el("button", { class: "tool-btn tool-active", title: "Marker", 
+      onclick() {
+        colorPanel.style.display =
+          colorPanel.style.display === "none" ? "flex" : "none";
+      }
+    }, "✏️"),
+    colorPanel
   );
 
   // back button takes the player back to the main menu

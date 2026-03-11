@@ -1,0 +1,9 @@
+QuarkSketch — Test Cases
+TC01 — Eraser tool
+On the canvas, draw and the select eraser tool on left and click and drag on drawing. Expected: drawing vanishes to colour of canvas.
+TC02 — Clear canvas
+On the canvas, click bin icon on the left when drawing is present Expected: All drawings disappear from canvas.
+TC03 — Undo button
+On the canvas, click undo when a drawing is present. Expected: Drawing goes back to last state before drawing
+TC04 — Redo button
+After undo button is clicked, click redo button. Expected: Drawing goes back to state ahead of time.

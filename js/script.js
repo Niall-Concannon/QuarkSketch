@@ -207,6 +207,16 @@ el("button", {
     }
   }, "🧽");
 
+  const clearBtn = el("button", {
+    class: "tool-btn",
+    title: "Clear Canvas",
+    onclick() {
+      if (confirm("Clear the entire canvas?")) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+  }, "🗑️");
+
   // group the marker and colour panel together
   const markerGroup = el("div", {
     style: "display:flex; flex-direction:column; align-items:center;"
@@ -218,7 +228,8 @@ el("button", {
   // sidebar
   const sidebar = el("div", { class: "tool-sidebar" },
     markerGroup,
-    eraserBtn
+    eraserBtn,
+    clearBtn
   );
 
   // back button takes the player back to the main menu

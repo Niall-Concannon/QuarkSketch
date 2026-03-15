@@ -63,6 +63,33 @@ function settingsPanel(onClose) {
   );
 }
 
+function countdownTimer(onDone) {
+  const counts = ["3", "2", "1", "Draw!"];
+  let i = 0;
+
+  const numDisplay = el("div", { class: "countdown-number" }, counts[0]);
+
+  const screen = el("div", { class: "screen countdown-screen" },
+    el("p", { class: "countdown-label" }, "Get ready to draw!"),
+    numDisplay,
+  );
+
+  const interval = setInterval(() => {
+    i++;
+    if (i >= counts.length) {
+      clearInterval(interval);
+      onDone();
+      return;
+    }
+    numDisplay.textContent = counts[i];
+    numDisplay.classList.remove("pop");
+    void numDisplay.offsetWidth; 
+    numDisplay.classList.add("pop");
+  }, 1000);
+
+  return screen;
+}
+
 // ─────────────────────────────────────────────────────────────────
 // DRAWING SCREEN — the main canvas where the player draws
 // ─────────────────────────────────────────────────────────────────
@@ -73,7 +100,7 @@ function drawingScreen() {
   let timeLeft = 30;
   let timeUp = false;
 
-  const timerBox = el("div", { class: "game-timer" }, `${timeLeft}s`); // Timer shows how much time is left to draw
+  const timerBox = el("div", { class: "game-timer" }, `Time Remaining: ${timeLeft}s`); // Timer shows how much time is left to draw
   const timeUpMsg = el("div", { class: "time-up-msg" }, "Time's up! Game over!"); // Game over message
 
   let currentColor = "#1a1a2e"; // marker colour — black
@@ -309,14 +336,14 @@ el("button", {
 
   const timerInterval = setInterval(() => {
   timeLeft--;
-  timerBox.textContent = `${timeLeft}s`;
+  timerBox.textContent = `Time Remaining: ${timeLeft}s`;
 
   // end round automatically and disable drawing when the timer reaches 0
   if (timeLeft <= 0) {
     clearInterval(timerInterval);
     timeUp = true;
     drawing = false;
-    timerBox.textContent = "0s";
+    timerBox.textContent = "Time Remaining: 0s";
     timeUpMsg.style.display = "block";
   }
 }, 1000);
@@ -344,7 +371,7 @@ function mainMenu() {
   return el("div", { class: "screen" },
     el("img", { class: "logo-img", src: "quarksketch_logo.png", alt: "QuarkSketch" }),
     el("div", { class: "btn-group" },
-      el("button", { class: "btn-play",     onclick() { show(drawingScreen()); } }, "Single Player"),
+      el("button", { class: "btn-play",     onclick() {  show(countdownTimer(() => show(drawingScreen()))); } }, "Single Player"),
       el("button", { class: "btn-multi",    onclick() { /* TODO: multiplayer lobby */ } }, "Multiplayer"),
       el("button", { class: "btn-leader",   onclick() { /* TODO: leaderboard screen */ } }, "Leaderboard"),
       el("button", { class: "btn-settings", onclick: toggleSettings }, "Settings"),

@@ -300,6 +300,27 @@ el("button", {
     onclick: redo
   }, "↷");
 
+  const submitBtn = el("button", {
+    class: "submit-btn",
+    title: "Submit Drawing",
+    onclick() {
+      if (timeUp) return;
+
+      clearInterval(timerInterval);
+      timeUp = true;
+      drawing = false;
+
+      timerBox.textContent = "Submitted!";
+      timeUpMsg.textContent = "Drawing submitted!";
+      timeUpMsg.style.display = "block";
+
+      const drawingData = canvas.toDataURL();
+      console.log("Submitted drawing:", drawingData);
+
+      submitBtn.disabled = true;
+    }
+  }, "✔ Submit");
+
   // group the marker and colour panel together
   const markerGroup = el("div", {
     style: "display:flex; flex-direction:column; align-items:center;"
@@ -325,7 +346,8 @@ el("button", {
     el("div", { class: "canvas-wrap" }, canvas),
     timerBox,
     timeUpMsg,
-    backBtn
+    backBtn,
+    submitBtn
   );
 
   // wait one frame before resizing so the layout has settled

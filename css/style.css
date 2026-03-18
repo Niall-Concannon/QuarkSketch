@@ -290,6 +290,31 @@ button:active {
   transition: background 0.2s;
 }
 
+/* ── Round badge — shared pill style ── */
+.round-badge {
+  font-family: var(--font);
+  font-size: 0.95rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 2px solid var(--text);
+  border-radius: 20px;
+  padding: 0.3rem 0.9rem;
+}
+
+/* Badge pinned top-left on the drawing screen */
+.draw-round-badge {
+  position: absolute;
+  top: 0.75rem;
+  left: 70px; /* clear the sidebar */
+}
+
+/* Title + badge sit side by side on the results screen */
+.results-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 /* ── Results Screen ────────────────────────── */
 .results-screen {
   gap: 1rem;

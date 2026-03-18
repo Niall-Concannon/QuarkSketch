@@ -104,7 +104,7 @@ const PLACEHOLDER_COMMENTS = [
   "We've sent this to the Louvre. They haven't responded yet.",
 ];
 
-function resultsScreen(drawingData) {
+function resultsScreen(drawingData, round) {
   const comment = PLACEHOLDER_COMMENTS[Math.floor(Math.random() * PLACEHOLDER_COMMENTS.length)];
 
   // Drawing thumbnail
@@ -130,17 +130,20 @@ function resultsScreen(drawingData) {
   const exitBtn = el("button", {
     class: "btn-settings results-btn",
     onclick() { show(mainMenu()); }
-  }, "Exit");
+  }, "🏠 Exit");
 
   const nextBtn = el("button", {
     class: "btn-play results-btn",
-    onclick() { show(countdownTimer(() => show(drawingScreen()))); }
+    onclick() { show(countdownTimer(() => show(drawingScreen(round + 1)))); }
   }, "Next Round →");
 
   const screen = el("div", { class: "screen results-screen" },
     // Logo at the top
     el("img", { class: "logo-img results-logo", src: "quarksketch_logo.png", alt: "QuarkSketch" }),
-    el("h2", { class: "results-title" }, "Round Over!"),
+    el("div", { class: "results-title-row" },
+      el("h2", { class: "results-title" }, "Round Over!"),
+      el("div", { class: "round-badge" }, `Round ${round}`),
+    ),
     el("div", { class: "results-body" },
       // Left: thumbnail
       el("div", { class: "results-left" },
@@ -169,7 +172,7 @@ function resultsScreen(drawingData) {
 // ─────────────────────────────────────────────────────────────────
 // DRAWING SCREEN — the main canvas where the player draws
 // ─────────────────────────────────────────────────────────────────
-function drawingScreen() {
+function drawingScreen(round = 1) {
   const canvas = el("canvas", { class: "draw-canvas" });
   const ctx = canvas.getContext("2d");
 
@@ -266,7 +269,7 @@ function drawingScreen() {
 
     setTimeout(() => {
       window.removeEventListener("resize", resizeCanvas);
-      show(resultsScreen(drawingData));
+      show(resultsScreen(drawingData, round));
     }, 600);
   }
 
@@ -349,6 +352,7 @@ function drawingScreen() {
     sidebar,
     el("div", { class: "canvas-wrap" }, canvas),
     timerBox,
+    el("div", { class: "round-badge draw-round-badge" }, `Round ${round}`),
     backBtn,
     submitBtn,
   );
@@ -387,7 +391,7 @@ function mainMenu() {
   return el("div", { class: "screen" },
     el("img", { class: "logo-img", src: "quarksketch_logo.png", alt: "QuarkSketch" }),
     el("div", { class: "btn-group" },
-      el("button", { class: "btn-play",     onclick() { show(countdownTimer(() => show(drawingScreen()))); } }, "Single Player"),
+      el("button", { class: "btn-play",     onclick() { show(countdownTimer(() => show(drawingScreen(1)))); } }, "Single Player"),
       el("button", { class: "btn-multi",    onclick() { /* TODO: multiplayer lobby */ } }, "Multiplayer"),
       el("button", { class: "btn-leader",   onclick() { /* TODO: leaderboard screen */ } }, "Leaderboard"),
       el("button", { class: "btn-settings", onclick: toggleSettings }, "Settings"),

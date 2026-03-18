@@ -1,0 +1,3 @@
+QuarkSketch — Test Cases Sprint 2 
+TC05 — Submit button
+On the canvas, click submit button in the bottom right. Expected: drawing is submitted and user can't continue drawing 

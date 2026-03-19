@@ -252,7 +252,7 @@ describe("UI — Drawing Screen Layout", () => {
     clearInterval(s._test.timerInterval);
     show(s);
  
-    // Assert
+
     expect(document.querySelector("canvas.draw-canvas")).not.toBeNull();
   });
  
@@ -299,5 +299,107 @@ describe("UI — Drawing Screen Layout", () => {
     show(s);
     expect(document.querySelector(".back-btn")).not.toBeNull();
   });
+
+});
+
+
+describe("UI — Drawing Screen Tools Layout", () => {
+
+test("color panel is hidden on load", () =>{
+const s = drawingScreen(1);
+
+clearInterval(s._test.timerInterval);
+expect(s._test.colorPanel.style.display).toBe("none");
+});
+
+
+test("clicking the marker color again closes the color panel", () => {
+const s = drawingScreen(1);
+
+clearInterval(s._test.timerInterval);
+s._test.markerBtn.click();
+expect(s._test.colorPanel.style.display).toBe("flex");
+});
+
+test("clicking the marker color opens the color panel", () => {
+const s = drawingScreen(1);
+
+clearInterval(s._test.timerInterval);
+s._test.markerBtn.click();
+s._test.markerBtn.click(); //closed
+expect(s._test.colorPanel.style.display).toBe("none");
+});
+
+
+test("selecting the color closes the panel and updates the choosen color", () =>{
+const s = drawingScreen(1);
+
+clearInterval(s._test.timerInterval);
+s._test.markerBtn.click();
+
+s._test.colorPanel.querySelectorAll("button")[1].click();
+
+//assert
+expect(s._test.colorPanel.style.display).toBe("none");
+expect(s._test.getCurrentColor()).toBe("#ff4d4d");
+});
+
+  test("clicking the eraser activates erasing mode", () => {
+    
+    const s = drawingScreen(1);
+    clearInterval(s._test.timerInterval);
  
+  
+    s._test.eraserBtn.click();
+ 
+    
+    expect(s._test.getErasing()).toBe(true);
+    expect(s._test.eraserBtn.classList.contains("tool-active")).toBe(true);
+    expect(s._test.markerBtn.classList.contains("tool-active")).toBe(false);
+  });
+
+  test("clicking the eraser hides the colour panel if it was open", () => {
+   
+    const s = drawingScreen(1);
+    clearInterval(s._test.timerInterval);
+    s._test.markerBtn.click(); // open colour panel
+ 
+    
+    s._test.eraserBtn.click();
+ 
+
+    expect(s._test.colorPanel.style.display).toBe("none");
+  });
+
+
+  test("the undo button moves the last stroke onto the redo stack", () => {
+
+    const s = drawingScreen(1);
+    clearInterval(s._test.timerInterval);
+    s._test.getUndoStack().push("data:fake-stroke");
+
+    //act
+    s._test.undoBtn.click();
+
+    //expect
+    expect(s._test.getUndoStack().length).toBe(0);
+    expect(s._test.getRedoStack().length).toBe(1);
+
+});
+   test("the redo button restores the undone stroke", () => {
+    const s = drawingScreen(1);
+    clearInterval(s._test.timerInterval);
+
+    s._test.getUndoStack().push("data:fake-stroke");
+    s._test.undoBtn.click();
+
+    //act
+    s._test.redoBtn.click();
+    
+    //expect
+    expect(s._test.getUndoStack().length).toBe(1);
+    expect(s._test.getRedoStack().length).toBe(0);
+
+
+});
 });

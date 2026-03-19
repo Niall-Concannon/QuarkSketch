@@ -20,9 +20,10 @@ jobs:
       - name: Install dependencies
         run: |
           cd "Testing Suite"
-          npm install
+          rm -rf node_modules
+          npm ci
 
       - name: Run tests
         run: |
           cd "Testing Suite"
-          npm test
+          node ./node_modules/jest/bin/jest.js

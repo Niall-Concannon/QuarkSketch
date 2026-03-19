@@ -163,6 +163,11 @@ function drawingScreen() {
 function mainMenu() {
   let settingsOpen = false;
   const settingsSlot = el("div", {}); // placeholder where settings panel drops in
+  var bgmTrack = new Audio(); //music
+  bgmTrack.normalize('/QuarkSketch/audio/track1.mp3');
+  bgmTrack.volume = 0.2;
+  
+
 
   // open or close the settings panel in place
   function toggleSettings() {

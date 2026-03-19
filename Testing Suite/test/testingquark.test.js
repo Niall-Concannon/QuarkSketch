@@ -1,4 +1,5 @@
- 
+const { TestEnvironment } = require('jest-environment-jsdom');
+const {settingsPanel, mainMenu, el, show} = require('../src/game');
 
 describe("el()", () => {
   test("creates an element with the correct tag", () => {
@@ -125,7 +126,7 @@ test("check if the checkbox is unchecked when body does not have have a 'dark' c
 
 
 test("check if the checkbox is unchecked when body does have have a 'dark' class ", () =>{
-  document.body.classList.remove("dark");
+  document.body.classList.add("dark");
     const panel = settingsPanel(() => {});
     const checkbox = panel.querySelector("input[type='checkbox']");
     expect(checkbox.checked).toBe(true);
@@ -148,7 +149,3 @@ test("toggling the checkbox adds 'dark' class to body", () => {
     expect(document.body.classList.contains("dark")).toBe(false);
   });
 
-  
-
-const { TestEnvironment } = require('jest-environment-jsdom');
-const {settingsPanel, mainMenu, el} = require('../src/game');

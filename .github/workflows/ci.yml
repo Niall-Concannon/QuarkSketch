@@ -1,0 +1,29 @@
+name: QuarkSketch Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: |
+          cd "Testing Suite"
+          rm -rf node_modules
+          npm ci
+
+      - name: Run tests
+        run: |
+          cd "Testing Suite"
+          node ./node_modules/jest/bin/jest.js

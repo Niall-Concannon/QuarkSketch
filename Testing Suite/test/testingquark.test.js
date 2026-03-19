@@ -171,5 +171,7 @@ test("clicking settings opens the panel", () => {
 
 
 
+
+
 const { TestEnvironment } = require('jest-environment-jsdom');
 const {settingsPanel, mainMenu, el} = require('../src/game');

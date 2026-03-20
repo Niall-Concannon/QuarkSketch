@@ -378,6 +378,10 @@ function drawingScreen(round = 1) {
 function mainMenu() {
   let settingsOpen = false;
   const settingsSlot = el("div", {});
+  var bgmTrack = new Audio(); //music
+  bgmTrack.normalize('/QuarkSketch/audio/track1.mp3');
+  bgmTrack.volume = 0.2;
+
 
   function toggleSettings() {
     settingsOpen = !settingsOpen;

@@ -149,3 +149,30 @@ test("toggling the checkbox adds 'dark' class to body", () => {
     expect(document.body.classList.contains("dark")).toBe(false);
   });
 
+
+  
+
+
+
+  //automated cases
+  describe("el()", () => {
+  test("create a button with the correct text", () => {
+    const btn = el("button", { class: "btn-play",}, "Single Player");
+    expect(btn.tagName).toBe("BUTTON");
+    expect(btn.className).toBe("btn-play");
+    expect(btn.textContent).toBe("Single Player");
+  });
+});
+
+test("clicking settings opens the panel", () => {
+  const menu = mainMenu();
+  menu.querySelector(".btn-settings").click();
+  expect(menu.querySelector(".settings-panel")).not.toBeNull();
+});
+
+
+
+
+
+const { TestEnvironment } = require('jest-environment-jsdom');
+const {settingsPanel, mainMenu, el} = require('../src/game');

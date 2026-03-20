@@ -170,9 +170,3 @@ test("clicking settings opens the panel", () => {
   expect(menu.querySelector(".settings-panel")).not.toBeNull();
 });
 
-
-
-
-
-const { TestEnvironment } = require('jest-environment-jsdom');
-const {settingsPanel, mainMenu, el} = require('../src/game');

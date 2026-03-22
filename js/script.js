@@ -64,15 +64,27 @@ function settingsPanel(onClose) {
 function countdownTimer(onDone) {
   const counts = ["3", "2", "1", "Draw!"];
   let i = 0;
+  let paused = false;
 
   const numDisplay = el("div", { class: "countdown-number" }, counts[0]);
+  const pauseMsg = el("div", { class: "countdown-pause-msg" }, "Paused — tap to resume");
 
-  const screen = el("div", { class: "screen countdown-screen" },
+  const screen = el("div", {
+    class: "screen countdown-screen",
+    onclick() {
+      paused = !paused;
+      pauseMsg.style.display = paused ? "block" : "none";
+      numDisplay.style.opacity = paused ? "0.3" : "1";
+    }
+  },
     el("p", { class: "countdown-label" }, "Get ready to draw!"),
+    el("p", { class: "countdown-tap-hint" }, "Tap to pause"),
     numDisplay,
+    pauseMsg,
   );
 
   const interval = setInterval(() => {
+    if (paused) return;
     i++;
     if (i >= counts.length) {
       clearInterval(interval);

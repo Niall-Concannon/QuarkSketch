@@ -496,3 +496,28 @@ button:active {
   padding: 0.75rem 2rem;
   font-size: 1.1rem;
 }
+
+/* ── Brush size slider ── */
+.size-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+.brush-slider {
+  writing-mode: bt-lr; /* vertical slider */
+  -webkit-appearance: slider-vertical;
+  width: 8px;
+  height: 100px;
+  cursor: pointer;
+}
+
+.brush-preview {
+  background: var(--text);
+  border-radius: 50%;
+  width: 6px;
+  height: 6px;
+  transition: width 0.1s, height 0.1s;
+}

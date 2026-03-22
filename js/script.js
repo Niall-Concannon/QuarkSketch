@@ -194,6 +194,7 @@ function drawingScreen(round = 1) {
   const timerBox = el("div", { class: "game-timer" }, `Time Remaining: ${timeLeft}s`);
 
   let currentColor = "#1a1a2e";
+  let brushSize = 6; // default = medium
   let erasing = false;
   let undoStack = [];
   let redoStack = [];
@@ -238,7 +239,7 @@ function drawingScreen(round = 1) {
     ctx.moveTo(lastX, lastY);
     ctx.lineTo(x, y);
     ctx.strokeStyle = erasing ? "#ffffff" : currentColor;
-    ctx.lineWidth   = erasing ? 20 : 4;
+    ctx.lineWidth   = erasing ? 20 : brushSize;
     ctx.lineCap     = "round";
     ctx.lineJoin    = "round";
     ctx.stroke();
@@ -333,6 +334,26 @@ function drawingScreen(round = 1) {
     }
   }, "🗑️");
 
+  const sizeSlider = el("input", {
+    type: "range",
+    min: 1,
+    max: 20,
+    value: brushSize,
+    class: "brush-slider",
+    oninput(e) {
+      brushSize = Number(e.target.value);
+      sizePreview.style.width = brushSize + "px";
+      sizePreview.style.height = brushSize + "px";
+    }
+  });
+
+  const sizePreview = el("div", { class: "brush-preview" });
+  
+  const sizeGroup = el("div", { class: "size-group" },
+    sizePreview,
+    sizeSlider
+  );
+
   const undoBtn = el("button", { class: "tool-btn", title: "Undo", onclick: undo }, "↶");
   const redoBtn = el("button", { class: "tool-btn", title: "Redo", onclick: redo }, "↷");
 
@@ -349,6 +370,7 @@ function drawingScreen(round = 1) {
 
   const sidebar = el("div", { class: "tool-sidebar" },
     markerGroup,
+    sizeGroup,
     eraserBtn,
     undoBtn,
     redoBtn,

@@ -363,6 +363,12 @@ function drawingScreen(round = 1) {
   const timerInterval = setInterval(() => {
     timeLeft--;
     timerBox.textContent = `Time Remaining: ${timeLeft}s`;
+
+    // ⚠️ LAST 5 SECONDS WARNING
+    if (timeLeft <= 5) {
+      timerBox.classList.add("timer-warning");
+    }
+
     if (timeLeft <= 0) {
       timerBox.textContent = "Time Remaining: 0s";
       endRound("timeout");

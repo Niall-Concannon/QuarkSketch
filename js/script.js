@@ -116,6 +116,104 @@ function getRoundPrompt() {
   };
 }
 
+const HISTORY_STORAGE_KEY = "quarkSketchHistory";
+const HISTORY_MAX_ENTRIES = 40;
+
+function loadHistoryEntries() {
+  try {
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistoryEntry(entry) {
+  try {
+    const current = loadHistoryEntries();
+    current.unshift(entry);
+    const trimmed = current.slice(0, HISTORY_MAX_ENTRIES);
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(trimmed));
+  } catch {
+    // Ignore storage failures so gameplay is never blocked.
+  }
+}
+
+function clearHistoryEntries() {
+  try {
+    localStorage.removeItem(HISTORY_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures so UI remains responsive.
+  }
+}
+
+function formatDateTime(isoString) {
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return "Unknown date";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function formatDuration(totalSeconds) {
+  const secs = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const minutes = Math.floor(secs / 60);
+  const seconds = secs % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+function historyScreen() {
+  const entries = loadHistoryEntries();
+
+  const list = entries.length > 0
+    ? el("div", { class: "history-list" },
+        ...entries.map((entry, index) =>
+          el("article", { class: "history-card" },
+            el("img", {
+              class: "history-thumb",
+              src: entry.drawingData,
+              alt: `Drawing ${index + 1}`,
+            }),
+            el("div", { class: "history-meta" },
+              el("p", { class: "history-prompt" }, entry.promptText || "No prompt saved"),
+              el("div", { class: "history-stats" },
+                el("span", { class: "history-chip" }, `Date: ${formatDateTime(entry.createdAt)}`),
+                el("span", { class: "history-chip" }, `Draw time: ${formatDuration(entry.drawDurationSeconds)}`),
+              ),
+            ),
+          ),
+        ),
+      )
+    : el("div", { class: "history-empty" },
+        el("p", {}, "No drawing history yet."),
+        el("p", { class: "history-empty-sub" }, "Finish a round and your drawings will appear here."),
+      );
+
+  return el("div", { class: "screen history-screen" },
+    el("img", { class: "logo-img history-logo", src: "quarksketch_logo.png", alt: "QuarkSketch" }),
+    el("div", { class: "history-head" },
+      el("h2", { class: "history-title" }, "Drawing History"),
+      el("div", { class: "history-controls" },
+        el("button", {
+          class: "history-clear-btn",
+          onclick() {
+            if (!entries.length) return;
+            if (!confirm("Clear all drawing history?")) return;
+            clearHistoryEntries();
+            show(historyScreen());
+          }
+        }, "Clear History"),
+        el("button", { class: "btn-settings history-back-btn", onclick() { show(mainMenu()); } }, "Back"),
+      ),
+    ),
+    list,
+  );
+}
+
 function promptScreen(promptData, onStart) {
   return el("div", { class: "screen prompt-screen" },
     el("div", { class: "prompt-card" },
@@ -222,6 +320,7 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
   const canvas = el("canvas", { class: "draw-canvas" });
   const ctx = canvas.getContext("2d");
 
+  const drawStartedAt = Date.now();
   let timeLeft = 30;
   let timeUp = false;
 
@@ -311,6 +410,16 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
     submitBtn.disabled = true;
 
     const drawingData = canvas.toDataURL();
+    const drawDurationSeconds = Math.floor((Date.now() - drawStartedAt) / 1000);
+
+    saveHistoryEntry({
+      promptText: promptData.text,
+      drawingData,
+      createdAt: new Date().toISOString(),
+      drawDurationSeconds,
+      round,
+      endReason: reason,
+    });
 
     // Brief flash message, then transition to results
     timerBox.textContent = reason === "submit" ? "Submitted! ✔" : "Time's up!";
@@ -473,7 +582,7 @@ function mainMenu() {
     el("div", { class: "btn-group" },
       el("button", { class: "btn-play",     onclick() { startRound(1); } }, "Single Player"),
       el("button", { class: "btn-multi",    onclick() { /* TODO: multiplayer lobby */ } }, "Multiplayer"),
-      el("button", { class: "btn-leader",   onclick() { /* TODO: leaderboard screen */ } }, "Leaderboard"),
+      el("button", { class: "btn-history",  onclick() { show(historyScreen()); } }, "History"),
       el("button", { class: "btn-settings", onclick: toggleSettings }, "Settings"),
     ),
     settingsSlot,

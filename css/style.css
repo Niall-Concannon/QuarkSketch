@@ -521,3 +521,137 @@ button:active {
   height: 6px;
   transition: width 0.1s, height 0.1s;
 }
+
+/* ── Prompt screen + prompt banners ───────────────────────────── */
+.prompt-screen {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(68, 168, 255, 0.24), transparent 38%),
+    radial-gradient(circle at 80% 85%, rgba(255, 107, 107, 0.22), transparent 38%),
+    var(--bg);
+}
+
+.prompt-card {
+  width: min(94vw, 980px);
+  background: linear-gradient(145deg, #ffffff 0%, #f5faff 52%, #fff8f8 100%);
+  border: 1px solid rgba(26, 26, 46, 0.14);
+  border-radius: 26px;
+  padding: clamp(1.2rem, 3.4vw, 2.6rem);
+  box-shadow: 0 22px 45px rgba(26, 26, 46, 0.18);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1.2rem;
+  animation: promptPopIn 0.42s cubic-bezier(.22, 1, .36, 1) both;
+}
+
+@keyframes promptPopIn {
+  from { opacity: 0; transform: scale(0.92) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.prompt-title {
+  font-size: clamp(1.9rem, 4.2vw, 3.4rem);
+  line-height: 1.05;
+  color: #FF6B6B;
+}
+
+.prompt-full {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 900;
+  font-size: clamp(1.35rem, 3.2vw, 2.25rem);
+  line-height: 1.24;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  text-wrap: balance;
+}
+
+.prompt-start-btn {
+  align-self: center;
+  padding: 0.85rem 1.55rem;
+  font-size: 1.15rem;
+}
+
+.draw-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: 0.85rem;
+  transform: translateX(-50%);
+  z-index: 6;
+  width: min(78vw, 760px);
+  text-align: center;
+  background: rgba(255, 255, 255, 0.95);
+  border: 2px solid var(--text);
+  border-radius: 12px;
+  box-shadow: 3px 3px 0 var(--text);
+  padding: 0.45rem 0.9rem;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.97rem;
+  color: var(--text);
+  pointer-events: none;
+}
+
+.results-prompt-chip {
+  max-width: 240px;
+  text-align: center;
+  background: linear-gradient(135deg, #fff 0%, #f6fbff 100%);
+  color: var(--text);
+  border: 2px solid #44A8FF;
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+body.dark .prompt-screen {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(68, 168, 255, 0.22), transparent 40%),
+    radial-gradient(circle at 80% 85%, rgba(255, 107, 107, 0.2), transparent 40%),
+    var(--bg);
+}
+
+body.dark .prompt-card {
+  background: linear-gradient(145deg, #20273d 0%, #1a2236 50%, #1f1e34 100%);
+  border-color: rgba(240, 240, 255, 0.2);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.45);
+}
+
+body.dark .prompt-full {
+  color: #f8f8ff;
+}
+
+body.dark .draw-prompt {
+  background: rgba(26, 26, 46, 0.94);
+  border-color: rgba(240, 240, 255, 0.35);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.38);
+  color: #f0f0ff;
+}
+
+body.dark .results-prompt-chip {
+  background: linear-gradient(135deg, #1f2538 0%, #1b2133 100%);
+  color: #f0f0ff;
+  border-color: #60b9ff;
+}
+
+@media (max-width: 900px) {
+  .prompt-card {
+    border-radius: 20px;
+    gap: 0.9rem;
+  }
+
+  .draw-prompt {
+    width: calc(100vw - 110px);
+    font-size: 0.87rem;
+    padding: 0.42rem 0.6rem;
+  }
+
+  .results-prompt-chip {
+    max-width: 70vw;
+  }
+}

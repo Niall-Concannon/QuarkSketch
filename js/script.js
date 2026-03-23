@@ -101,6 +101,39 @@ function countdownTimer(onDone) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// ROUND PROMPTS — two-part randomized drawing prompt
+// ─────────────────────────────────────────────────────────────────
+function getRoundPrompt() {
+  if (window.PROMPTS && typeof window.PROMPTS.getRandomPrompt === "function") {
+    return window.PROMPTS.getRandomPrompt();
+  }
+
+  // Fallback in case prompt file is unavailable.
+  return {
+    subject: "robot",
+    action: "dancing in the rain",
+    text: "Draw a robot dancing in the rain"
+  };
+}
+
+function promptScreen(promptData, onStart) {
+  return el("div", { class: "screen prompt-screen" },
+    el("div", { class: "prompt-card" },
+      el("h2", { class: "prompt-title" }, "Draw This Round!"),
+      el("p", { class: "prompt-full" }, promptData.text),
+      el("button", { class: "btn-play prompt-start-btn", onclick: onStart }, "Start Drawing"),
+    ),
+  );
+}
+
+function startRound(round = 1) {
+  show(countdownTimer(() => {
+    const promptData = getRoundPrompt();
+    show(promptScreen(promptData, () => show(drawingScreen(round, promptData))));
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────────
 // RESULTS SCREEN — shown after drawing is submitted or time runs out
 // ─────────────────────────────────────────────────────────────────
 const PLACEHOLDER_COMMENTS = [
@@ -116,7 +149,7 @@ const PLACEHOLDER_COMMENTS = [
   "We've sent this to the Louvre. They haven't responded yet.",
 ];
 
-function resultsScreen(drawingData, round) {
+function resultsScreen(drawingData, round, promptData) {
   const comment = PLACEHOLDER_COMMENTS[Math.floor(Math.random() * PLACEHOLDER_COMMENTS.length)];
 
   // Drawing thumbnail
@@ -146,7 +179,7 @@ function resultsScreen(drawingData, round) {
 
   const nextBtn = el("button", {
     class: "btn-play results-btn",
-    onclick() { show(countdownTimer(() => show(drawingScreen(round + 1)))); }
+    onclick() { startRound(round + 1); }
   }, "Next Round →");
 
   const screen = el("div", { class: "screen results-screen" },
@@ -160,6 +193,7 @@ function resultsScreen(drawingData, round) {
       // Left: thumbnail
       el("div", { class: "results-left" },
         el("div", { class: "results-thumb-wrap" },
+          el("p", { class: "results-prompt-chip" }, promptData.text),
           thumb,
           el("p", { class: "results-thumb-label" }, "Your Masterpiece"),
         ),
@@ -184,7 +218,7 @@ function resultsScreen(drawingData, round) {
 // ─────────────────────────────────────────────────────────────────
 // DRAWING SCREEN — the main canvas where the player draws
 // ─────────────────────────────────────────────────────────────────
-function drawingScreen(round = 1) {
+function drawingScreen(round = 1, promptData = getRoundPrompt()) {
   const canvas = el("canvas", { class: "draw-canvas" });
   const ctx = canvas.getContext("2d");
 
@@ -192,6 +226,7 @@ function drawingScreen(round = 1) {
   let timeUp = false;
 
   const timerBox = el("div", { class: "game-timer" }, `Time Remaining: ${timeLeft}s`);
+  const drawPrompt = el("div", { class: "draw-prompt" }, promptData.text);
 
   let currentColor = "#1a1a2e";
   let brushSize = 6; // default = medium
@@ -282,7 +317,7 @@ function drawingScreen(round = 1) {
 
     setTimeout(() => {
       window.removeEventListener("resize", resizeCanvas);
-      show(resultsScreen(drawingData, round));
+      show(resultsScreen(drawingData, round, promptData));
     }, 600);
   }
 
@@ -386,6 +421,7 @@ function drawingScreen(round = 1) {
     sidebar,
     el("div", { class: "canvas-wrap" }, canvas),
     timerBox,
+    drawPrompt,
     el("div", { class: "round-badge draw-round-badge" }, `Round ${round}`),
     backBtn,
     submitBtn,
@@ -435,7 +471,7 @@ function mainMenu() {
   return el("div", { class: "screen" },
     el("img", { class: "logo-img", src: "quarksketch_logo.png", alt: "QuarkSketch" }),
     el("div", { class: "btn-group" },
-      el("button", { class: "btn-play",     onclick() { show(countdownTimer(() => show(drawingScreen(1)))); } }, "Single Player"),
+      el("button", { class: "btn-play",     onclick() { startRound(1); } }, "Single Player"),
       el("button", { class: "btn-multi",    onclick() { /* TODO: multiplayer lobby */ } }, "Multiplayer"),
       el("button", { class: "btn-leader",   onclick() { /* TODO: leaderboard screen */ } }, "Leaderboard"),
       el("button", { class: "btn-settings", onclick: toggleSettings }, "Settings"),

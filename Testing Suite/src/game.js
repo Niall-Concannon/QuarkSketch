@@ -404,5 +404,18 @@ function mainMenu() {
   );
 }
 
-// kick everything off
-show(mainMenu());
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    el,
+    show,
+    rotateMsg,
+    settingsPanel,
+    countdownTimer,
+    resultsScreen,
+    drawingScreen,
+    mainMenu,
+  };
+} else {
+  // kick everything off
+  show(mainMenu());
+}

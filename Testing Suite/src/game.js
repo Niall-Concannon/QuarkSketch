@@ -406,3 +406,5 @@ function mainMenu() {
 
 // kick everything off
 show(mainMenu());
+
+module.exports = {el, show, rotateMsg, settingsPanel, countdownTimer, resultsScreen, drawingScreen, mainMenu};

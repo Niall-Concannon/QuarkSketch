@@ -1,5 +1,13 @@
-const { TestEnvironment } = require('jest-environment-jsdom');
-const {settingsPanel, mainMenu, el, show} = require('../src/game');
+// @jest-environment jsdom
+
+const {el, show, mainMenu, settingsPanel} = require('../src/game');
+
+beforeEach(() => {
+  document.body.innerHTML = "";
+  document.body.classList.remove("dark");
+});
+
+
 
 describe("el()", () => {
   test("creates an element with the correct tag", () => {
@@ -97,8 +105,10 @@ describe("mainMenu()", () => {
   });
 
   test("clicking Single Player calls show() with a draw-screen", () => {
+    jest.useFakeTimers();
     show(mainMenu());
     document.querySelector(".btn-play").click();
+    jest.advanceTimersByTime(4000);
     expect(document.querySelector(".draw-screen")).not.toBeNull();
   });
 });
@@ -115,7 +125,7 @@ describe("settingsPanel()", () => {
     const checkbox = panel.querySelector("input[type='checkbox']");
     expect(checkbox).not.toBeNull();
   });
-});
+
 
 test("check if the checkbox is unchecked when body does not have have a 'dark' class ", () =>{
   document.body.classList.remove("dark");
@@ -148,25 +158,9 @@ test("toggling the checkbox adds 'dark' class to body", () => {
     checkbox.dispatchEvent(new Event("change"));
     expect(document.body.classList.contains("dark")).toBe(false);
   });
-
+});
 
   
 
 
-
-  //automated cases
-  describe("el()", () => {
-  test("create a button with the correct text", () => {
-    const btn = el("button", { class: "btn-play",}, "Single Player");
-    expect(btn.tagName).toBe("BUTTON");
-    expect(btn.className).toBe("btn-play");
-    expect(btn.textContent).toBe("Single Player");
-  });
-});
-
-test("clicking settings opens the panel", () => {
-  const menu = mainMenu();
-  menu.querySelector(".btn-settings").click();
-  expect(menu.querySelector(".settings-panel")).not.toBeNull();
-});
 

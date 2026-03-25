@@ -400,6 +400,5 @@ expect(s._test.getCurrentColor()).toBe("#ff4d4d");
     expect(s._test.getUndoStack().length).toBe(1);
     expect(s._test.getRedoStack().length).toBe(0);
 
-
 });
 });

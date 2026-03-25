@@ -1,6 +1,6 @@
 // @jest-environment jsdom
 
-const {el, show, mainMenu, settingsPanel, formatDateTime, formatDuration} = require('../src/game');
+const {el, show, mainMenu, settingsPanel, formatDateTime, formatDuration, resultsScreen} = require('../src/game');
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -187,5 +187,39 @@ describe("formatDuration()" , () => {
   });
 });
 
+//result screen
+const FAKE_DATA = "data:image/png;base64.abc";
+const FAKE_PROMPT = { text : "Draw a Monkey Cat", subject: "animals", action: "A monkey cat"};
 
+describe("resultsScreen()", () => {
+test("renderes a div result screen", () => {
+  expect(resultsScreen(FAKE_DATA,1, FAKE_PROMPT).classList).toContain("results-screen");
+});
 
+test("Shows 'Round Over!' heading", () => {
+  expect(resultsScreen(FAKE_DATA, 1, FAKE_PROMPT).textContent).toContain("Round Over!");
+});
+
+test("Shows the correct round number", () => {
+  expect(resultsScreen(FAKE_DATA, 3, FAKE_PROMPT).textContent).toContain("Round 3");
+});
+
+test("Shows the prompt text on results screen", () => {
+  expect(resultsScreen(FAKE_DATA, 1, FAKE_PROMPT).textContent).toContain(FAKE_PROMPT.text);
+});
+
+test("Exit button returns to the menu" , () => {
+  show(resultsScreen(FAKE_DATA,1,FAKE_PROMPT));
+  document.querySelector(".btn-settings.results-btn").click();
+  expect(document.querySelector(".results-screen")).toBeNull();
+  expect(document.querySelector(".screen")).not.toBeNull();
+
+});
+
+test("Next round button introduces launches the countdown" , () => {
+  show(resultsScreen(FAKE_DATA,1,FAKE_PROMPT));
+  document.querySelector(".btn-play.results-btn").click();
+  expect(document.querySelector(".countdown-screen")).not.toBeNull;
+
+});
+});

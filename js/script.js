@@ -330,6 +330,9 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
   let currentColor = "#1a1a2e";
   let brushSize = 6; // default = medium
   let erasing = false;
+  let lineMode = false;
+  let lineStart = null;
+  let lineSnapshot = null;
   let undoStack = [];
   let redoStack = [];
 
@@ -363,27 +366,56 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
     drawing = true;
     saveState();
     [lastX, lastY] = getPos(e);
+    if (lineMode) {
+    lineStart = [lastX, lastY];
+    lineSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    }
   }
 
   function draw(e) {
-    e.preventDefault();
-    if (!drawing) return;
-    const [x, y] = getPos(e);
+  e.preventDefault();
+  if (!drawing) return;
+  const [x, y] = getPos(e);
+  if (lineMode) {
+    ctx.putImageData(lineSnapshot, 0, 0);
     ctx.beginPath();
-    ctx.moveTo(lastX, lastY);
+    ctx.moveTo(lineStart[0], lineStart[1]);
     ctx.lineTo(x, y);
-    ctx.strokeStyle = erasing ? "#ffffff" : currentColor;
-    ctx.lineWidth   = erasing ? 20 : brushSize;
-    ctx.lineCap     = "round";
-    ctx.lineJoin    = "round";
+    ctx.strokeStyle = currentColor;
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = "round";
     ctx.stroke();
-    [lastX, lastY] = [x, y];
+    return;
   }
+  ctx.beginPath();
+  ctx.moveTo(lastX, lastY);
+  ctx.lineTo(x, y);
+  ctx.strokeStyle = erasing ? "#ffffff" : currentColor;
+  ctx.lineWidth = erasing ? 20 : brushSize;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.stroke();
+  [lastX, lastY] = [x, y];
+}
 
   function stopDraw(e) {
-    e.preventDefault();
-    drawing = false;
+  e.preventDefault();
+  if (!drawing) return;
+  drawing = false;
+  if (lineMode && lineStart) {
+    const [x, y] = getPos(e);
+    ctx.putImageData(lineSnapshot, 0, 0);
+    ctx.beginPath();
+    ctx.moveTo(lineStart[0], lineStart[1]);
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = currentColor;
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = "round";
+    ctx.stroke();
+    lineStart = null;
+    lineSnapshot = null;
   }
+}
 
   function undo() {
     if (undoStack.length === 0) return;
@@ -453,8 +485,10 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
     title: "Marker",
     onclick() {
       erasing = false;
+      lineMode = false;
       markerBtn.classList.add("tool-active");
       eraserBtn.classList.remove("tool-active");
+      lineBtn.classList.remove("tool-active");
       colorPanel.style.display = colorPanel.style.display === "none" ? "flex" : "none";
     }
   }, "✏️");
@@ -464,11 +498,26 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
     title: "Eraser",
     onclick() {
       erasing = true;
+      lineMode = false;
       eraserBtn.classList.add("tool-active");
       markerBtn.classList.remove("tool-active");
+      lineBtn.classList.remove("tool-active");
       colorPanel.style.display = "none";
     }
   }, "🧽");
+
+  const lineBtn = el("button", {
+  class: "tool-btn",
+  title: "Line Tool",
+  onclick() {
+    lineMode = true;
+    erasing = false;
+    lineBtn.classList.add("tool-active");
+    markerBtn.classList.remove("tool-active");
+    eraserBtn.classList.remove("tool-active");
+    colorPanel.style.display = "none";
+  }
+}, "📏");
 
   const clearBtn = el("button", {
     class: "tool-btn",
@@ -516,6 +565,7 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
     markerGroup,
     sizeGroup,
     eraserBtn,
+    lineBtn,
     undoBtn,
     redoBtn,
     clearBtn,

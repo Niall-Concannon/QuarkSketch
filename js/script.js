@@ -333,6 +333,10 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
   let lineMode = false;
   let lineStart = null;
   let lineSnapshot = null;
+  let shapeMode = false;
+let shapeType = null; // — "rect", "circle", "triangle"
+let shapeStart = null;
+let shapeSnapshot = null;
   let undoStack = [];
   let redoStack = [];
 
@@ -370,6 +374,10 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
     lineStart = [lastX, lastY];
     lineSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
     }
+    if (shapeMode) {
+      shapeStart = [lastX, lastY];
+      shapeSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    }
   }
 
   function draw(e) {
@@ -387,6 +395,29 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
     ctx.stroke();
     return;
   }
+
+   if (shapeMode) {
+      ctx.putImageData(shapeSnapshot, 0, 0);
+      ctx.strokeStyle = currentColor;
+      ctx.lineWidth = brushSize;
+      ctx.beginPath();
+      if (shapeType === "rect") {
+        ctx.strokeRect(shapeStart[0], shapeStart[1], x - shapeStart[0], y - shapeStart[1]);
+      } else if (shapeType === "circle") {
+        const rx = (x - shapeStart[0]) / 2;
+        const ry = (y - shapeStart[1]) / 2;
+        ctx.ellipse(shapeStart[0] + rx, shapeStart[1] + ry, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (shapeType === "triangle") {
+        const midX = (shapeStart[0] + x) / 2;
+        ctx.moveTo(midX, shapeStart[1]);
+        ctx.lineTo(x, y);
+        ctx.lineTo(shapeStart[0], y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+      return;
+    }
   ctx.beginPath();
   ctx.moveTo(lastX, lastY);
   ctx.lineTo(x, y);
@@ -415,6 +446,31 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
     lineStart = null;
     lineSnapshot = null;
   }
+
+  if (shapeMode && shapeStart) {
+      const [x, y] = getPos(e);
+      ctx.putImageData(shapeSnapshot, 0, 0);
+      ctx.strokeStyle = currentColor;
+      ctx.lineWidth = brushSize;
+      ctx.beginPath();
+      if (shapeType === "rect") {
+        ctx.strokeRect(shapeStart[0], shapeStart[1], x - shapeStart[0], y - shapeStart[1]);
+      } else if (shapeType === "circle") {
+        const rx = (x - shapeStart[0]) / 2;
+        const ry = (y - shapeStart[1]) / 2;
+        ctx.ellipse(shapeStart[0] + rx, shapeStart[1] + ry, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (shapeType === "triangle") {
+        const midX = (shapeStart[0] + x) / 2;
+        ctx.moveTo(midX, shapeStart[1]);
+        ctx.lineTo(x, y);
+        ctx.lineTo(shapeStart[0], y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+      shapeStart = null;
+      shapeSnapshot = null;
+    }
 }
 
   function undo() {
@@ -486,9 +542,11 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
     onclick() {
       erasing = false;
       lineMode = false;
+      shapeMode = false;
       markerBtn.classList.add("tool-active");
       eraserBtn.classList.remove("tool-active");
       lineBtn.classList.remove("tool-active");
+      shapeBtn.classList.remove("tool-active");
       colorPanel.style.display = colorPanel.style.display === "none" ? "flex" : "none";
     }
   }, "✏️");
@@ -499,9 +557,11 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
     onclick() {
       erasing = true;
       lineMode = false;
+      shapeMode = false;
       eraserBtn.classList.add("tool-active");
       markerBtn.classList.remove("tool-active");
       lineBtn.classList.remove("tool-active");
+      shapeBtn.classList.remove("tool-active");
       colorPanel.style.display = "none";
     }
   }, "🧽");
@@ -512,12 +572,37 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
   onclick() {
     lineMode = true;
     erasing = false;
+    shapeMode = false;
     lineBtn.classList.add("tool-active");
+    shapeBtn.classList.remove("tool-active");
     markerBtn.classList.remove("tool-active");
     eraserBtn.classList.remove("tool-active");
     colorPanel.style.display = "none";
   }
 }, "📏");
+
+const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:4px;" },
+    el("button", { class: "tool-btn", title: "Rectangle", onclick() { shapeType = "rect"; shapePanel.style.display = "none"; shapeBtn.textContent = "▭"; } }, "▭"),
+    el("button", { class: "tool-btn", title: "Circle",    onclick() { shapeType = "circle"; shapePanel.style.display = "none"; shapeBtn.textContent = "⬤"; } }, "⬤"),
+    el("button", { class: "tool-btn", title: "Triangle",  onclick() { shapeType = "triangle"; shapePanel.style.display = "none"; shapeBtn.textContent = "△"; } }, "△"),
+  );
+
+  const shapeBtn = el("button", {
+    class: "tool-btn",
+    title: "Shape Tool",
+    onclick() {
+      shapeMode = true;
+      shapeType = shapeType || "rect";
+      erasing = false;
+      lineMode = false;
+      shapeBtn.classList.add("tool-active");
+      markerBtn.classList.remove("tool-active");
+      eraserBtn.classList.remove("tool-active");
+      lineBtn.classList.remove("tool-active");
+      colorPanel.style.display = "none";
+      shapePanel.style.display = shapePanel.style.display === "none" ? "flex" : "none";
+    }
+  }, "▭");
 
   const clearBtn = el("button", {
     class: "tool-btn",
@@ -566,6 +651,10 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
     sizeGroup,
     eraserBtn,
     lineBtn,
+    el("div", { style: "display:flex; flex-direction:column; align-items:center;" },
+      shapeBtn,
+      shapePanel,
+    ),
     undoBtn,
     redoBtn,
     clearBtn,

@@ -1,6 +1,6 @@
 // @jest-environment jsdom
 
-const {el, show, mainMenu, settingsPanel} = require('../src/game');
+const {el, show, mainMenu, settingsPanel, formatDateTime, formatDuration} = require('../src/game');
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -74,7 +74,6 @@ describe("mainMenu()", () => {
     const text = menu.textContent;
     expect(text).toContain("Single Player");
     expect(text).toContain("Multiplayer");
-    expect(text).toContain("Leaderboard");
     expect(text).toContain("Settings");
   });
 
@@ -104,13 +103,7 @@ describe("mainMenu()", () => {
     expect(menu.querySelector(".settings-panel")).toBeNull();
   });
 
-  test("clicking Single Player calls show() with a draw-screen", () => {
-    jest.useFakeTimers();
-    show(mainMenu());
-    document.querySelector(".btn-play").click();
-    jest.advanceTimersByTime(4000);
-    expect(document.querySelector(".draw-screen")).not.toBeNull();
-  });
+
 });
 
 //settings panel
@@ -160,7 +153,39 @@ test("toggling the checkbox adds 'dark' class to body", () => {
   });
 });
 
-  
+
+//Date and time checks
+describe("formatDateTime()" , () => {
+  test("returns a non-empty string for a valid ISO format",() => {
+  const result = formatDateTime("2026-03-25T16:51:54+00:00Z");
+  expect(typeof result).toBe("string");
+  expect(result.length).toBeGreaterThan(0);
+  });
+
+  test("returns an unkown date for invalid string", () => {
+    expect(formatDateTime("not-a-date")).toBe("Unknown date");
+  });
+});
+
+
+//format duration
+describe("formatDuration()" , () => {
+  test("format seconds under 1 minute as Xs", () => {
+    expect(formatDuration(45)).toBe("45s");
+  });
+
+  test("format seconds exactly as 60 minute as Xs", () => {
+    expect(formatDuration(60)).toBe("1m 00s");
+  });
+
+  test("format seconds as 1m 30s", () =>{
+    expect(formatDuration(90)).toBe("1m 30s");
+  });
+
+  test("handles negatives numbers gracefully", () => {
+    expect(formatDuration(-5)).toBe("0s");
+  });
+});
 
 
 

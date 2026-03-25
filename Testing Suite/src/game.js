@@ -64,15 +64,27 @@ function settingsPanel(onClose) {
 function countdownTimer(onDone) {
   const counts = ["3", "2", "1", "Draw!"];
   let i = 0;
+  let paused = false;
 
   const numDisplay = el("div", { class: "countdown-number" }, counts[0]);
+  const pauseMsg = el("div", { class: "countdown-pause-msg" }, "Paused — tap to resume");
 
-  const screen = el("div", { class: "screen countdown-screen" },
+  const screen = el("div", {
+    class: "screen countdown-screen",
+    onclick() {
+      paused = !paused;
+      pauseMsg.style.display = paused ? "block" : "none";
+      numDisplay.style.opacity = paused ? "0.3" : "1";
+    }
+  },
     el("p", { class: "countdown-label" }, "Get ready to draw!"),
+    el("p", { class: "countdown-tap-hint" }, "Tap to pause"),
     numDisplay,
+    pauseMsg,
   );
 
   const interval = setInterval(() => {
+    if (paused) return;
     i++;
     if (i >= counts.length) {
       clearInterval(interval);
@@ -86,6 +98,137 @@ function countdownTimer(onDone) {
   }, 1000);
 
   return screen;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ROUND PROMPTS — two-part randomized drawing prompt
+// ─────────────────────────────────────────────────────────────────
+function getRoundPrompt() {
+  if (window.PROMPTS && typeof window.PROMPTS.getRandomPrompt === "function") {
+    return window.PROMPTS.getRandomPrompt();
+  }
+
+  // Fallback in case prompt file is unavailable.
+  return {
+    subject: "robot",
+    action: "dancing in the rain",
+    text: "Draw a robot dancing in the rain"
+  };
+}
+
+const HISTORY_STORAGE_KEY = "quarkSketchHistory";
+const HISTORY_MAX_ENTRIES = 40;
+
+function loadHistoryEntries() {
+  try {
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistoryEntry(entry) {
+  try {
+    const current = loadHistoryEntries();
+    current.unshift(entry);
+    const trimmed = current.slice(0, HISTORY_MAX_ENTRIES);
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(trimmed));
+  } catch {
+    // Ignore storage failures so gameplay is never blocked.
+  }
+}
+
+function clearHistoryEntries() {
+  try {
+    localStorage.removeItem(HISTORY_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures so UI remains responsive.
+  }
+}
+
+function formatDateTime(isoString) {
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return "Unknown date";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function formatDuration(totalSeconds) {
+  const secs = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const minutes = Math.floor(secs / 60);
+  const seconds = secs % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+function historyScreen() {
+  const entries = loadHistoryEntries();
+
+  const list = entries.length > 0
+    ? el("div", { class: "history-list" },
+        ...entries.map((entry, index) =>
+          el("article", { class: "history-card" },
+            el("img", {
+              class: "history-thumb",
+              src: entry.drawingData,
+              alt: `Drawing ${index + 1}`,
+            }),
+            el("div", { class: "history-meta" },
+              el("p", { class: "history-prompt" }, entry.promptText || "No prompt saved"),
+              el("div", { class: "history-stats" },
+                el("span", { class: "history-chip" }, `Date: ${formatDateTime(entry.createdAt)}`),
+                el("span", { class: "history-chip" }, `Draw time: ${formatDuration(entry.drawDurationSeconds)}`),
+              ),
+            ),
+          ),
+        ),
+      )
+    : el("div", { class: "history-empty" },
+        el("p", {}, "No drawing history yet."),
+        el("p", { class: "history-empty-sub" }, "Finish a round and your drawings will appear here."),
+      );
+
+  return el("div", { class: "screen history-screen" },
+    el("img", { class: "logo-img history-logo", src: "quarksketch_logo.png", alt: "QuarkSketch" }),
+    el("div", { class: "history-head" },
+      el("h2", { class: "history-title" }, "Drawing History"),
+      el("div", { class: "history-controls" },
+        el("button", {
+          class: "history-clear-btn",
+          onclick() {
+            if (!entries.length) return;
+            if (!confirm("Clear all drawing history?")) return;
+            clearHistoryEntries();
+            show(historyScreen());
+          }
+        }, "Clear History"),
+        el("button", { class: "btn-settings history-back-btn", onclick() { show(mainMenu()); } }, "Back"),
+      ),
+    ),
+    list,
+  );
+}
+
+function promptScreen(promptData, onStart) {
+  return el("div", { class: "screen prompt-screen" },
+    el("div", { class: "prompt-card" },
+      el("h2", { class: "prompt-title" }, "Draw This Round!"),
+      el("p", { class: "prompt-full" }, promptData.text),
+      el("button", { class: "btn-play prompt-start-btn", onclick: onStart }, "Start Drawing"),
+    ),
+  );
+}
+
+function startRound(round = 1) {
+  show(countdownTimer(() => {
+    const promptData = getRoundPrompt();
+    show(promptScreen(promptData, () => show(drawingScreen(round, promptData))));
+  }));
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -104,7 +247,7 @@ const PLACEHOLDER_COMMENTS = [
   "We've sent this to the Louvre. They haven't responded yet.",
 ];
 
-function resultsScreen(drawingData, round) {
+function resultsScreen(drawingData, round, promptData) {
   const comment = PLACEHOLDER_COMMENTS[Math.floor(Math.random() * PLACEHOLDER_COMMENTS.length)];
 
   // Drawing thumbnail
@@ -134,7 +277,7 @@ function resultsScreen(drawingData, round) {
 
   const nextBtn = el("button", {
     class: "btn-play results-btn",
-    onclick() { show(countdownTimer(() => show(drawingScreen(round + 1)))); }
+    onclick() { startRound(round + 1); }
   }, "Next Round →");
 
   const screen = el("div", { class: "screen results-screen" },
@@ -148,6 +291,7 @@ function resultsScreen(drawingData, round) {
       // Left: thumbnail
       el("div", { class: "results-left" },
         el("div", { class: "results-thumb-wrap" },
+          el("p", { class: "results-prompt-chip" }, promptData.text),
           thumb,
           el("p", { class: "results-thumb-label" }, "Your Masterpiece"),
         ),
@@ -172,17 +316,27 @@ function resultsScreen(drawingData, round) {
 // ─────────────────────────────────────────────────────────────────
 // DRAWING SCREEN — the main canvas where the player draws
 // ─────────────────────────────────────────────────────────────────
-function drawingScreen(round = 1) {
+function drawingScreen(round = 1, promptData = getRoundPrompt()) {
   const canvas = el("canvas", { class: "draw-canvas" });
   const ctx = canvas.getContext("2d");
 
+  const drawStartedAt = Date.now();
   let timeLeft = 30;
   let timeUp = false;
 
   const timerBox = el("div", { class: "game-timer" }, `Time Remaining: ${timeLeft}s`);
+  const drawPrompt = el("div", { class: "draw-prompt" }, promptData.text);
 
   let currentColor = "#1a1a2e";
+  let brushSize = 6; // default = medium
   let erasing = false;
+  let lineMode = false;
+  let lineStart = null;
+  let lineSnapshot = null;
+  let shapeMode = false;
+let shapeType = null; // — "rect", "circle", "triangle"
+let shapeStart = null;
+let shapeSnapshot = null;
   let undoStack = [];
   let redoStack = [];
 
@@ -216,27 +370,108 @@ function drawingScreen(round = 1) {
     drawing = true;
     saveState();
     [lastX, lastY] = getPos(e);
+    if (lineMode) {
+    lineStart = [lastX, lastY];
+    lineSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    }
+    if (shapeMode) {
+      shapeStart = [lastX, lastY];
+      shapeSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    }
   }
 
   function draw(e) {
-    e.preventDefault();
-    if (!drawing) return;
-    const [x, y] = getPos(e);
+  e.preventDefault();
+  if (!drawing) return;
+  const [x, y] = getPos(e);
+  if (lineMode) {
+    ctx.putImageData(lineSnapshot, 0, 0);
     ctx.beginPath();
-    ctx.moveTo(lastX, lastY);
+    ctx.moveTo(lineStart[0], lineStart[1]);
     ctx.lineTo(x, y);
-    ctx.strokeStyle = erasing ? "#ffffff" : currentColor;
-    ctx.lineWidth   = erasing ? 20 : 4;
-    ctx.lineCap     = "round";
-    ctx.lineJoin    = "round";
+    ctx.strokeStyle = currentColor;
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = "round";
     ctx.stroke();
-    [lastX, lastY] = [x, y];
+    return;
   }
 
+   if (shapeMode) {
+      ctx.putImageData(shapeSnapshot, 0, 0);
+      ctx.strokeStyle = currentColor;
+      ctx.lineWidth = brushSize;
+      ctx.beginPath();
+      if (shapeType === "rect") {
+        ctx.strokeRect(shapeStart[0], shapeStart[1], x - shapeStart[0], y - shapeStart[1]);
+      } else if (shapeType === "circle") {
+        const rx = (x - shapeStart[0]) / 2;
+        const ry = (y - shapeStart[1]) / 2;
+        ctx.ellipse(shapeStart[0] + rx, shapeStart[1] + ry, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (shapeType === "triangle") {
+        const midX = (shapeStart[0] + x) / 2;
+        ctx.moveTo(midX, shapeStart[1]);
+        ctx.lineTo(x, y);
+        ctx.lineTo(shapeStart[0], y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+      return;
+    }
+  ctx.beginPath();
+  ctx.moveTo(lastX, lastY);
+  ctx.lineTo(x, y);
+  ctx.strokeStyle = erasing ? "#ffffff" : currentColor;
+  ctx.lineWidth = erasing ? 20 : brushSize;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.stroke();
+  [lastX, lastY] = [x, y];
+}
+
   function stopDraw(e) {
-    e.preventDefault();
-    drawing = false;
+  e.preventDefault();
+  if (!drawing) return;
+  drawing = false;
+  if (lineMode && lineStart) {
+    const [x, y] = getPos(e);
+    ctx.putImageData(lineSnapshot, 0, 0);
+    ctx.beginPath();
+    ctx.moveTo(lineStart[0], lineStart[1]);
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = currentColor;
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = "round";
+    ctx.stroke();
+    lineStart = null;
+    lineSnapshot = null;
   }
+
+  if (shapeMode && shapeStart) {
+      const [x, y] = getPos(e);
+      ctx.putImageData(shapeSnapshot, 0, 0);
+      ctx.strokeStyle = currentColor;
+      ctx.lineWidth = brushSize;
+      ctx.beginPath();
+      if (shapeType === "rect") {
+        ctx.strokeRect(shapeStart[0], shapeStart[1], x - shapeStart[0], y - shapeStart[1]);
+      } else if (shapeType === "circle") {
+        const rx = (x - shapeStart[0]) / 2;
+        const ry = (y - shapeStart[1]) / 2;
+        ctx.ellipse(shapeStart[0] + rx, shapeStart[1] + ry, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (shapeType === "triangle") {
+        const midX = (shapeStart[0] + x) / 2;
+        ctx.moveTo(midX, shapeStart[1]);
+        ctx.lineTo(x, y);
+        ctx.lineTo(shapeStart[0], y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+      shapeStart = null;
+      shapeSnapshot = null;
+    }
+}
 
   function undo() {
     if (undoStack.length === 0) return;
@@ -263,13 +498,23 @@ function drawingScreen(round = 1) {
     submitBtn.disabled = true;
 
     const drawingData = canvas.toDataURL();
+    const drawDurationSeconds = Math.floor((Date.now() - drawStartedAt) / 1000);
+
+    saveHistoryEntry({
+      promptText: promptData.text,
+      drawingData,
+      createdAt: new Date().toISOString(),
+      drawDurationSeconds,
+      round,
+      endReason: reason,
+    });
 
     // Brief flash message, then transition to results
     timerBox.textContent = reason === "submit" ? "Submitted! ✔" : "Time's up!";
 
     setTimeout(() => {
       window.removeEventListener("resize", resizeCanvas);
-      show(resultsScreen(drawingData, round));
+      show(resultsScreen(drawingData, round, promptData));
     }, 600);
   }
 
@@ -296,8 +541,12 @@ function drawingScreen(round = 1) {
     title: "Marker",
     onclick() {
       erasing = false;
+      lineMode = false;
+      shapeMode = false;
       markerBtn.classList.add("tool-active");
       eraserBtn.classList.remove("tool-active");
+      lineBtn.classList.remove("tool-active");
+      shapeBtn.classList.remove("tool-active");
       colorPanel.style.display = colorPanel.style.display === "none" ? "flex" : "none";
     }
   }, "✏️");
@@ -307,11 +556,53 @@ function drawingScreen(round = 1) {
     title: "Eraser",
     onclick() {
       erasing = true;
+      lineMode = false;
+      shapeMode = false;
       eraserBtn.classList.add("tool-active");
       markerBtn.classList.remove("tool-active");
+      lineBtn.classList.remove("tool-active");
+      shapeBtn.classList.remove("tool-active");
       colorPanel.style.display = "none";
     }
   }, "🧽");
+
+  const lineBtn = el("button", {
+  class: "tool-btn",
+  title: "Line Tool",
+  onclick() {
+    lineMode = true;
+    erasing = false;
+    shapeMode = false;
+    lineBtn.classList.add("tool-active");
+    shapeBtn.classList.remove("tool-active");
+    markerBtn.classList.remove("tool-active");
+    eraserBtn.classList.remove("tool-active");
+    colorPanel.style.display = "none";
+  }
+}, "📏");
+
+const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:4px;" },
+    el("button", { class: "tool-btn", title: "Rectangle", onclick() { shapeType = "rect"; shapePanel.style.display = "none"; shapeBtn.textContent = "▭"; } }, "▭"),
+    el("button", { class: "tool-btn", title: "Circle",    onclick() { shapeType = "circle"; shapePanel.style.display = "none"; shapeBtn.textContent = "⬤"; } }, "⬤"),
+    el("button", { class: "tool-btn", title: "Triangle",  onclick() { shapeType = "triangle"; shapePanel.style.display = "none"; shapeBtn.textContent = "△"; } }, "△"),
+  );
+
+  const shapeBtn = el("button", {
+    class: "tool-btn",
+    title: "Shape Tool",
+    onclick() {
+      shapeMode = true;
+      shapeType = shapeType || "rect";
+      erasing = false;
+      lineMode = false;
+      shapeBtn.classList.add("tool-active");
+      markerBtn.classList.remove("tool-active");
+      eraserBtn.classList.remove("tool-active");
+      lineBtn.classList.remove("tool-active");
+      colorPanel.style.display = "none";
+      shapePanel.style.display = shapePanel.style.display === "none" ? "flex" : "none";
+    }
+  }, "▭");
 
   const clearBtn = el("button", {
     class: "tool-btn",
@@ -320,6 +611,26 @@ function drawingScreen(round = 1) {
       if (confirm("Clear the entire canvas?")) ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
   }, "🗑️");
+
+  const sizeSlider = el("input", {
+    type: "range",
+    min: 1,
+    max: 20,
+    value: brushSize,
+    class: "brush-slider",
+    oninput(e) {
+      brushSize = Number(e.target.value);
+      sizePreview.style.width = brushSize + "px";
+      sizePreview.style.height = brushSize + "px";
+    }
+  });
+
+  const sizePreview = el("div", { class: "brush-preview" });
+  
+  const sizeGroup = el("div", { class: "size-group" },
+    sizePreview,
+    sizeSlider
+  );
 
   const undoBtn = el("button", { class: "tool-btn", title: "Undo", onclick: undo }, "↶");
   const redoBtn = el("button", { class: "tool-btn", title: "Redo", onclick: redo }, "↷");
@@ -337,7 +648,13 @@ function drawingScreen(round = 1) {
 
   const sidebar = el("div", { class: "tool-sidebar" },
     markerGroup,
+    sizeGroup,
     eraserBtn,
+    lineBtn,
+    el("div", { style: "display:flex; flex-direction:column; align-items:center;" },
+      shapeBtn,
+      shapePanel,
+    ),
     undoBtn,
     redoBtn,
     clearBtn,
@@ -352,6 +669,7 @@ function drawingScreen(round = 1) {
     sidebar,
     el("div", { class: "canvas-wrap" }, canvas),
     timerBox,
+    drawPrompt,
     el("div", { class: "round-badge draw-round-badge" }, `Round ${round}`),
     backBtn,
     submitBtn,
@@ -363,6 +681,12 @@ function drawingScreen(round = 1) {
   const timerInterval = setInterval(() => {
     timeLeft--;
     timerBox.textContent = `Time Remaining: ${timeLeft}s`;
+
+    // ⚠️ LAST 5 SECONDS WARNING
+    if (timeLeft <= 5) {
+      timerBox.classList.add("timer-warning");
+    }
+
     if (timeLeft <= 0) {
       timerBox.textContent = "Time Remaining: 0s";
       endRound("timeout");
@@ -395,9 +719,9 @@ function mainMenu() {
   return el("div", { class: "screen" },
     el("img", { class: "logo-img", src: "quarksketch_logo.png", alt: "QuarkSketch" }),
     el("div", { class: "btn-group" },
-      el("button", { class: "btn-play",     onclick() { show(countdownTimer(() => show(drawingScreen(1)))); } }, "Single Player"),
+      el("button", { class: "btn-play",     onclick() { startRound(1); } }, "Single Player"),
       el("button", { class: "btn-multi",    onclick() { /* TODO: multiplayer lobby */ } }, "Multiplayer"),
-      el("button", { class: "btn-leader",   onclick() { /* TODO: leaderboard screen */ } }, "Leaderboard"),
+      el("button", { class: "btn-history",  onclick() { show(historyScreen()); } }, "History"),
       el("button", { class: "btn-settings", onclick: toggleSettings }, "Settings"),
     ),
     settingsSlot,
@@ -406,5 +730,4 @@ function mainMenu() {
 
 // kick everything off
 show(mainMenu());
-
-module.exports = {el, show, rotateMsg, settingsPanel, countdownTimer, resultsScreen, drawingScreen, mainMenu};
+module.exports = {el, show, rotateMsg, settingsPanel, countdownTimer, resultsScreen, drawingScreen, mainMenu, historyScreen, promptScreen, startRound, loadHistoryEntries, saveHistoryEntry, clearHistoryEntries, formatDateTime, formatDuration};

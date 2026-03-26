@@ -339,6 +339,7 @@ let shapeStart = null;
 let shapeSnapshot = null;
   let undoStack = [];
   let redoStack = [];
+  let fillMode = false;
 
   function resizeCanvas() {
     const rect = canvas.getBoundingClientRect();
@@ -364,9 +365,67 @@ let shapeSnapshot = null;
     redoStack = [];
   }
 
+function floodfill(ctx,startX, startY, fillColor, canvas){
+  const imageData = ctx.getImageData(0,0, canvas.width,canvas.height);
+  const data = imageData.data;
+
+  //Hex to RGBA
+  const fillR = parseInt(fillColor.slice(1,3),16);
+  const fillG = parseInt(fillColor.slice(3,5),16);
+  const fillB = parseInt(fillColor.slice(5,7),16);
+
+
+  const idx = (Math.floor(startY) * canvas.width + Math.floor(startX)) * 4;
+  const targetR = data[idx];
+  const targetG = data[idx + 1];
+  const targetB = data[idx + 2];
+  const targetA = data[idx + 3];
+
+//Don't fill the same colour
+if(targetR == fillR && targetG == fillG && targetB == fillB)
+  return;
+
+function matchesTarget(i){
+  return data[i] == targetR && data[i+1] == targetG &&
+  data[i + 2] == targetB && data[i+3] == targetA;
+}
+
+//BFS flood still
+const stack = [idx];
+while (stack.length){
+  const i = stack.pop();
+  if(!matchesTarget(i)) continue;
+  data[i] = fillR;
+  data[i + 1] = fillG;
+  data[i + 2] = fillB;
+  data[i + 3] = 255;
+
+  const pos = i / 4;
+  const x = pos % canvas.width;
+  const y = Math.floor(pos/canvas.width);
+  if (x > 0)             
+    stack.push(i-4);
+  if (x < canvas.width - 1) 
+    stack.push(i+4);
+  if (y > 0)               
+    stack.push(i - canvas.width *4);
+  if (y < canvas.height - 1) 
+    stack.push(i + canvas.width *4);
+}
+ctx.putImageData(imageData,0,0);
+}
+
+
+
   function startDraw(e) {
     if (timeUp) return;
     e.preventDefault();
+    if (fillMode){
+      saveState();
+      const[x,y] = getPos(e);
+      floodfill(ctx, x, y, currentColor,  canvas);
+      return;
+    }
     drawing = true;
     saveState();
     [lastX, lastY] = getPos(e);
@@ -543,6 +602,8 @@ let shapeSnapshot = null;
       erasing = false;
       lineMode = false;
       shapeMode = false;
+      fillMode = false;
+      fillBtn.classList.remove("tool-active");
       markerBtn.classList.add("tool-active");
       eraserBtn.classList.remove("tool-active");
       lineBtn.classList.remove("tool-active");
@@ -558,6 +619,8 @@ let shapeSnapshot = null;
       erasing = true;
       lineMode = false;
       shapeMode = false;
+      fillMode = false;
+      fillBtn.classList.remove("tool-active");
       eraserBtn.classList.add("tool-active");
       markerBtn.classList.remove("tool-active");
       lineBtn.classList.remove("tool-active");
@@ -573,6 +636,8 @@ let shapeSnapshot = null;
     lineMode = true;
     erasing = false;
     shapeMode = false;
+    fillMode = false;
+    fillBtn.classList.remove("tool-active");
     lineBtn.classList.add("tool-active");
     shapeBtn.classList.remove("tool-active");
     markerBtn.classList.remove("tool-active");
@@ -595,6 +660,8 @@ const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:
       shapeType = shapeType || "rect";
       erasing = false;
       lineMode = false;
+      fillMode = false;
+      fillBtn.classList.remove("tool-active");
       shapeBtn.classList.add("tool-active");
       markerBtn.classList.remove("tool-active");
       eraserBtn.classList.remove("tool-active");
@@ -604,6 +671,23 @@ const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:
     }
   }, "▭");
 
+  const fillBtn = el ("button", {
+    class: "tool-btn",
+    title: "Fill Bucket",
+    onclick(){
+      fillMode = true;
+      erasing =  false;
+      lineMode = false;
+      shapeMode = false;
+      fillBtn.classList.add("tool-active");
+      shapeBtn.classList.remove("tool-active");
+      markerBtn.classList.remove("tool-active");
+      eraserBtn.classList.remove("tool-active");
+      lineBtn.classList.remove("tool-active");
+      colorPanel.style.display = "none";
+    }
+  }, "🪣");
+
   const clearBtn = el("button", {
     class: "tool-btn",
     title: "Clear Canvas",
@@ -611,6 +695,7 @@ const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:
       if (confirm("Clear the entire canvas?")) ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
   }, "🗑️");
+  
 
   const sizeSlider = el("input", {
     type: "range",
@@ -650,6 +735,7 @@ const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:
     markerGroup,
     sizeGroup,
     eraserBtn,
+    fillBtn,
     lineBtn,
     el("div", { style: "display:flex; flex-direction:column; align-items:center;" },
       shapeBtn,

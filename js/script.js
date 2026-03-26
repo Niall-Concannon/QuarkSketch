@@ -699,12 +699,21 @@ const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:
 // ─────────────────────────────────────────────────────────────────
 // MAIN MENU — first thing the player sees
 // ─────────────────────────────────────────────────────────────────
+
+
 function mainMenu() {
   let settingsOpen = false;
   const settingsSlot = el("div", {});
+if (bgmTrack) { // stop any existing music before starting fresh
+  bgmTrack.pause();
+  bgmTrack.currentTime = 0;
+}
+
   var bgmTrack = new Audio(); //music
-  bgmTrack.normalize('/QuarkSketch/audio/track1.mp3');
+  bgmTrack.src = './audio/track1.mp3';
   bgmTrack.volume = 0.2;
+  bgmTrack.loop = true;
+  document.addEventListener("click" , () => bgmTrack.play(), {once: true});
 
 
   function toggleSettings() {

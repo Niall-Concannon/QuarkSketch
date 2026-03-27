@@ -1,0 +1,17 @@
+QuarkSketch — Test Cases
+TC01 — Main menu loads
+Open index.html in browser. Expected: logo, Single Player, Multiplayer, Leaderboard and Settings buttons are visible.
+TC02 — Single Player navigates to canvas
+Click Single Player. Expected: drawing screen appears with a white canvas and tool sidebar.
+TC03 — Drawing works with mouse
+On the canvas, click and drag. Expected: a black line follows the cursor.
+TC04 — Drawing works on touch
+On a touch device, press and drag on the canvas. Expected: a black line follows the finger.
+TC05 — Back button returns to menu
+On the canvas screen, click the back arrow. Expected: main menu is shown again.
+TC06 — Settings panel opens and closes
+Click Settings on the main menu. Expected: settings panel appears. Click Close. Expected: panel disappears.
+TC07 — Dark mode toggle
+Open Settings and flip the dark mode switch. Expected: background changes to dark. Flip it back. Expected: returns to light.
+TC08 — Portrait warning on mobile
+Open the app on a phone in portrait mode. Expected: rotate device message is shown and the menu is hidden.

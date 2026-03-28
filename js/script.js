@@ -1,6 +1,10 @@
 // QuarkSketch — Main Game Script
 // Handles all screens and logic for the main menu and drawing canvas
 
+let bgmTrack = null;
+let sfxEnabled = true;
+let musicEnabled = false; // music off by default
+
 // ─────────────────────────────────────────────────────────────────
 // HELPER — builds a DOM element with attributes and children
 // ─────────────────────────────────────────────────────────────────
@@ -48,11 +52,40 @@ function settingsPanel(onClose) {
     document.body.classList.toggle("dark", darkInput.checked);
   });
 
+  // music toggle
+  const musicInput = el("input", { type: "checkbox" });
+  musicInput.checked = musicEnabled;
+  musicInput.addEventListener("change", () => {
+    musicEnabled = musicInput.checked;
+    if (bgmTrack) {
+      if (musicEnabled) {
+        bgmTrack.play().catch(() => {});
+      } else {
+        bgmTrack.pause();
+      }
+    }
+  });
+
+  // sfx toggle
+  const sfxInput = el("input", { type: "checkbox" });
+  sfxInput.checked = sfxEnabled;
+  sfxInput.addEventListener("change", () => {
+    sfxEnabled = sfxInput.checked;
+  });
+
   return el("div", { class: "settings-panel" },
     el("h3", {}, "Settings"),
     el("div", { class: "setting-row" },
       el("span", {}, "Dark Mode"),
       el("label", { class: "toggle" }, darkInput, el("span", { class: "toggle-track" })),
+    ),
+    el("div", { class: "setting-row" },
+      el("span", {}, "Music"),
+      el("label", { class: "toggle" }, musicInput, el("span", { class: "toggle-track" })),
+    ),
+    el("div", { class: "setting-row" },
+      el("span", {}, "SFX"),
+      el("label", { class: "toggle" }, sfxInput, el("span", { class: "toggle-track" })),
     ),
     el("button", { class: "close-btn", onclick: onClose }, "Close"),
   );
@@ -790,16 +823,19 @@ const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:
 function mainMenu() {
   let settingsOpen = false;
   const settingsSlot = el("div", {});
-if (bgmTrack) { // stop any existing music before starting fresh
+if (bgmTrack) {
   bgmTrack.pause();
   bgmTrack.currentTime = 0;
 }
+bgmTrack = new Audio();
+bgmTrack.src = './audio/track1.mp3';
+bgmTrack.volume = 0.2;
+bgmTrack.loop = true;
 
-  var bgmTrack = new Audio(); //music
-  bgmTrack.src = './audio/track1.mp3';
-  bgmTrack.volume = 0.2;
-  bgmTrack.loop = true;
-  document.addEventListener("click" , () => bgmTrack.play(), {once: true});
+// only play if music is enabled
+if (musicEnabled) {
+  document.addEventListener("click", () => bgmTrack.play(), { once: true });
+}
 
 
   function toggleSettings() {

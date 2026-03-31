@@ -643,7 +643,12 @@ ctx.putImageData(imageData,0,0);
       shapeBtn.classList.remove("tool-active");
       colorPanel.style.display = colorPanel.style.display === "none" ? "flex" : "none";
     }
-  }, "✏️");
+  }, el("img", {
+    src: "ico/pencil.png",
+    alt: "Pencil",
+    class: "tool-icon",
+  })
+);
 
   const eraserBtn = el("button", {
     class: "tool-btn",
@@ -660,8 +665,12 @@ ctx.putImageData(imageData,0,0);
       shapeBtn.classList.remove("tool-active");
       colorPanel.style.display = "none";
     }
-  }, "🧽");
-
+  }, el("img", {
+    src: "ico/erasor.png",
+    alt: "Eraser",
+    class: "tool-icon",
+  })
+);
   const lineBtn = el("button", {
   class: "tool-btn",
   title: "Line Tool",
@@ -677,7 +686,12 @@ ctx.putImageData(imageData,0,0);
     eraserBtn.classList.remove("tool-active");
     colorPanel.style.display = "none";
   }
-}, "📏");
+}, el("img", {
+    src: "ico/line.png",
+    alt: "Line",
+    class: "tool-icon",
+  })
+);
 
 const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:4px;" },
     el("button", { class: "tool-btn", title: "Rectangle", onclick() { shapeType = "rect"; shapePanel.style.display = "none"; shapeBtn.textContent = "▭"; } }, "▭"),
@@ -719,7 +733,12 @@ const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:
       lineBtn.classList.remove("tool-active");
       colorPanel.style.display = "none";
     }
-  }, "🪣");
+  }, el("img", {
+    src: "ico/bucket.png",
+    alt: "Bucket",
+    class: "tool-icon",
+  })
+);
 
   const clearBtn = el("button", {
     class: "tool-btn",
@@ -727,7 +746,13 @@ const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:
     onclick() {
       if (confirm("Clear the entire canvas?")) ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
-  }, "🗑️");
+  }, 
+  el("img", {
+    src: "ico/trash.png",
+    alt: "Trash",
+    class: "tool-icon",
+  })
+);
   
 
   const sizeSlider = el("input", {

@@ -198,6 +198,14 @@ button:active {
   transition: background 0.1s, border-color 0.1s;
 }
 
+.tool-icon{
+width: "18px";
+height: "18px";
+image-resolution: 50pi;
+display: block;
+pointer-events: none;
+}
+
 .tool-btn:active { transform: none; }
 
 .tool-active {

@@ -367,7 +367,7 @@ function drawingScreen(round = 1, promptData = getRoundPrompt()) {
   let lineStart = null;
   let lineSnapshot = null;
   let shapeMode = false;
-let shapeType = null; // — "rect", "circle", "triangle"
+let shapeType = null; // — "square", "rect", "circle", "triangle"
 let shapeStart = null;
 let shapeSnapshot = null;
   let undoStack = [];
@@ -493,7 +493,12 @@ ctx.putImageData(imageData,0,0);
       ctx.strokeStyle = currentColor;
       ctx.lineWidth = brushSize;
       ctx.beginPath();
-      if (shapeType === "rect") {
+      if (shapeType === "square") {
+        const size = Math.min(Math.abs(x - shapeStart[0]), Math.abs(y - shapeStart[1]));
+        const signX = x > shapeStart[0] ? 1 : -1;
+        const signY = y > shapeStart[1] ? 1 : -1;
+        ctx.strokeRect(shapeStart[0], shapeStart[1], size * signX, size * signY);
+      } else if (shapeType === "rect") {
         ctx.strokeRect(shapeStart[0], shapeStart[1], x - shapeStart[0], y - shapeStart[1]);
       } else if (shapeType === "circle") {
         const rx = (x - shapeStart[0]) / 2;
@@ -514,7 +519,7 @@ ctx.putImageData(imageData,0,0);
   ctx.moveTo(lastX, lastY);
   ctx.lineTo(x, y);
   ctx.strokeStyle = erasing ? "#ffffff" : currentColor;
-  ctx.lineWidth = erasing ? 20 : brushSize;
+  ctx.lineWidth = erasing ? brushSize * 3 : brushSize;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.stroke();
@@ -545,7 +550,12 @@ ctx.putImageData(imageData,0,0);
       ctx.strokeStyle = currentColor;
       ctx.lineWidth = brushSize;
       ctx.beginPath();
-      if (shapeType === "rect") {
+      if (shapeType === "square") {
+        const size = Math.min(Math.abs(x - shapeStart[0]), Math.abs(y - shapeStart[1]));
+        const signX = x > shapeStart[0] ? 1 : -1;
+        const signY = y > shapeStart[1] ? 1 : -1;
+        ctx.strokeRect(shapeStart[0], shapeStart[1], size * signX, size * signY);
+      } else if (shapeType === "rect") {
         ctx.strokeRect(shapeStart[0], shapeStart[1], x - shapeStart[0], y - shapeStart[1]);
       } else if (shapeType === "circle") {
         const rx = (x - shapeStart[0]) / 2;
@@ -618,14 +628,18 @@ ctx.putImageData(imageData,0,0);
   canvas.addEventListener("touchmove",   draw,      { passive: false });
   canvas.addEventListener("touchend",    stopDraw,  { passive: false });
 
-  const colorPanel = el("div", { style: "display:none; flex-direction:column; gap:6px;" },
-    el("button", { class: "tool-btn", onclick() { erasing = false; currentColor = "#1a1a2e"; colorPanel.style.display = "none"; } }, "⚫"),
-    el("button", { class: "tool-btn", onclick() { erasing = false; currentColor = "#ff4d4d"; colorPanel.style.display = "none"; } }, "🔴"),
-    el("button", { class: "tool-btn", onclick() { erasing = false; currentColor = "#3b82f6"; colorPanel.style.display = "none"; } }, "🔵"),
-    el("button", { class: "tool-btn", onclick() { erasing = false; currentColor = "#22c55e"; colorPanel.style.display = "none"; } }, "🟢"),
-    el("button", { class: "tool-btn", onclick() { erasing = false; currentColor = "#facc15"; colorPanel.style.display = "none"; } }, "🟡"),
-    el("button", { class: "tool-btn", onclick() { erasing = false; currentColor = "#f97316"; colorPanel.style.display = "none"; } }, "🟠"),
-    el("button", { class: "tool-btn", onclick() { erasing = false; currentColor = "#a855f7"; colorPanel.style.display = "none"; } }, "🟣"),
+  const colorPanel = el("div", { class: "color-panel", style: "display:none;" },
+    el("button", { class: "color-btn", style: "background:#1a1a2e;", onclick() { erasing = false; currentColor = "#1a1a2e"; colorPanel.style.display = "none"; } }),
+    el("button", { class: "color-btn", style: "background:#ff4d4d;", onclick() { erasing = false; currentColor = "#ff4d4d"; colorPanel.style.display = "none"; } }),
+    el("button", { class: "color-btn", style: "background:#3b82f6;", onclick() { erasing = false; currentColor = "#3b82f6"; colorPanel.style.display = "none"; } }),
+    el("button", { class: "color-btn", style: "background:#22c55e;", onclick() { erasing = false; currentColor = "#22c55e"; colorPanel.style.display = "none"; } }),
+    el("button", { class: "color-btn", style: "background:#facc15;", onclick() { erasing = false; currentColor = "#facc15"; colorPanel.style.display = "none"; } }),
+    el("button", { class: "color-btn", style: "background:#f97316;", onclick() { erasing = false; currentColor = "#f97316"; colorPanel.style.display = "none"; } }),
+    el("button", { class: "color-btn", style: "background:#a855f7;", onclick() { erasing = false; currentColor = "#a855f7"; colorPanel.style.display = "none"; } }),
+    el("button", { class: "color-btn", style: "background:#ec4899;", onclick() { erasing = false; currentColor = "#ec4899"; colorPanel.style.display = "none"; } }),
+    el("button", { class: "color-btn", style: "background:#06b6d4;", onclick() { erasing = false; currentColor = "#06b6d4"; colorPanel.style.display = "none"; } }),
+    el("button", { class: "color-btn", style: "background:#84cc16;", onclick() { erasing = false; currentColor = "#84cc16"; colorPanel.style.display = "none"; } }),
+    el("button", { class: "color-btn", style: "background:#f59e0b;", onclick() { erasing = false; currentColor = "#f59e0b"; colorPanel.style.display = "none"; } }),
   );
 
   const markerBtn = el("button", {
@@ -693,7 +707,8 @@ ctx.putImageData(imageData,0,0);
   })
 );
 
-const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:4px;" },
+const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
+    el("button", { class: "tool-btn", title: "Square", onclick() { shapeType = "square"; shapePanel.style.display = "none"; shapeBtn.textContent = "□"; } }, "□"),
     el("button", { class: "tool-btn", title: "Rectangle", onclick() { shapeType = "rect"; shapePanel.style.display = "none"; shapeBtn.textContent = "▭"; } }, "▭"),
     el("button", { class: "tool-btn", title: "Circle",    onclick() { shapeType = "circle"; shapePanel.style.display = "none"; shapeBtn.textContent = "⬤"; } }, "⬤"),
     el("button", { class: "tool-btn", title: "Triangle",  onclick() { shapeType = "triangle"; shapePanel.style.display = "none"; shapeBtn.textContent = "△"; } }, "△"),
@@ -704,7 +719,7 @@ const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:
     title: "Shape Tool",
     onclick() {
       shapeMode = true;
-      shapeType = shapeType || "rect";
+      shapeType = shapeType || "square";
       erasing = false;
       lineMode = false;
       fillMode = false;
@@ -716,7 +731,7 @@ const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:
       colorPanel.style.display = "none";
       shapePanel.style.display = shapePanel.style.display === "none" ? "flex" : "none";
     }
-  }, "▭");
+  }, "□");
 
   const fillBtn = el ("button", {
     class: "tool-btn",
@@ -755,25 +770,26 @@ const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:
 );
   
 
-  const sizeSlider = el("input", {
-    type: "range",
-    min: 1,
-    max: 20,
-    value: brushSize,
-    class: "brush-slider",
-    oninput(e) {
-      brushSize = Number(e.target.value);
-      sizePreview.style.width = brushSize + "px";
-      sizePreview.style.height = brushSize + "px";
-    }
-  });
-
-  const sizePreview = el("div", { class: "brush-preview" });
-  
-  const sizeGroup = el("div", { class: "size-group" },
-    sizePreview,
-    sizeSlider
+  const sizePanel = el("div", { class: "size-panel", style: "display:none;" },
+    el("div", { class: "size-labels" },
+      el("span", { class: "size-label-large" }),
+      el("span", { class: "size-label-small" }),
+    ),
+    el("input", { type: "range", min: "2", max: "20", value: brushSize, class: "size-slider", oninput: (e) => { brushSize = parseInt(e.target.value); updateBrushPreview(); } }),
   );
+
+  const sizeBtn = el("button", {
+    class: "tool-btn",
+    title: "Brush Size",
+    onclick() {
+      updateBrushPreview();
+      sizePanel.style.display = sizePanel.style.display === "none" ? "flex" : "none";
+    }
+  }, el("div", { class: "brush-size-preview", style: `width:20px; height:20px;` }));
+
+  function updateBrushPreview() {
+    // Preview is fixed size for consistency
+  }
 
   const undoBtn = el("button", { class: "tool-btn", title: "Undo", onclick: undo }, "↶");
   const redoBtn = el("button", { class: "tool-btn", title: "Redo", onclick: redo }, "↷");
@@ -791,7 +807,8 @@ const shapePanel = el("div", { style: "display:none; flex-direction:column; gap:
 
   const sidebar = el("div", { class: "tool-sidebar" },
     markerGroup,
-    sizeGroup,
+    sizeBtn,
+    sizePanel,
     eraserBtn,
     fillBtn,
     lineBtn,

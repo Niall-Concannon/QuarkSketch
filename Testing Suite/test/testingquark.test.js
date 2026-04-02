@@ -1,6 +1,6 @@
 // @jest-environment jsdom
 
-const {el, show, mainMenu, settingsPanel, formatDateTime, formatDuration, resultsScreen} = require('../src/game');
+const {el, show, mainMenu, settingsPanel, formatDateTime, formatDuration, resultsScreen, loadHistoryEntries, saveHistoryEntry, clearHistoryEntries} = require('../src/game');
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -222,4 +222,35 @@ test("Next round button introduces launches the countdown" , () => {
   expect(document.querySelector(".countdown-screen")).not.toBeNull;
 
 });
+});
+
+//history helper
+describe("loadHistoryEntries()",  () => {
+test("returns an empty array when the local storage is empty", () => {
+  expect(loadHistoryEntries()).toEqual([]);
+});
+
+const entries = loadHistoryEntries();
+
+describe("saveHistoryEntry()", () => {
+test("saves an entry on top of the list", () => {
+ saveHistoryEntry({promptText: "first"});
+ saveHistoryEntry({promptText: "second"});
+expect(loadHistoryEntries()[0].promptText).toBe("second");
+});
+});
+
+test("trims list to 40 entries max", () => {
+  for (let i = 0; i < 45; i++) saveHistoryEntry({promptText: 'entry $[i}'});
+  
+expect(loadHistoryEntries().length).toBe(40);
+});
+});
+
+describe("clearHistoryEntries()", () => {
+  test("removes all saved data", () => {
+    saveHistoryEntry({promptText: "something"});
+    clearHistoryEntries();
+    expect(loadHistoryEntries()).toEqual([])
+  });
 });

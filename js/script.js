@@ -202,6 +202,16 @@ function formatDuration(totalSeconds) {
 function historyScreen() {
   const entries = loadHistoryEntries();
 
+  function historyAiSummary(entry) {
+    if (!entry.aiScores) return null;
+    return el("div", { class: "history-ai-summary" },
+      el("span", { class: "history-chip history-chip-score" }, `AI: ${entry.aiScores.overall ?? 0}%`),
+      el("span", { class: "history-chip history-chip-score" }, `Resemblance: ${entry.aiScores.resemblance ?? 0}%`),
+      el("span", { class: "history-chip history-chip-score" }, `Color: ${entry.aiScores.color ?? 0}%`),
+      el("span", { class: "history-chip history-chip-score" }, `Accuracy: ${entry.aiScores.accuracy ?? 0}%`),
+    );
+  }
+
   const list = entries.length > 0
     ? el("div", { class: "history-list" },
         ...entries.map((entry, index) =>
@@ -217,6 +227,7 @@ function historyScreen() {
                 el("span", { class: "history-chip" }, `Date: ${formatDateTime(entry.createdAt)}`),
                 el("span", { class: "history-chip" }, `Draw time: ${formatDuration(entry.drawDurationSeconds)}`),
               ),
+              historyAiSummary(entry),
             ),
           ),
         ),
@@ -267,21 +278,721 @@ function startRound(round = 1) {
 // ─────────────────────────────────────────────────────────────────
 // RESULTS SCREEN — shown after drawing is submitted or time runs out
 // ─────────────────────────────────────────────────────────────────
-const PLACEHOLDER_COMMENTS = [
-  "Hmm… a bold interpretation. Picasso would be confused, but impressed.",
-  "Was that drawn with your eyes closed? Either way, we respect the commitment!",
-  "Somewhere between 'abstract masterpiece' and 'fever dream'. We love it.",
-  "The AI is still processing. It may never recover.",
-  "10 out of 10 for effort. The other categories are still being evaluated...",
-  "Not bad! Not great either, but definitely not bad.",
-  "Your art speaks for itself. Unfortunately, we don't know what it's saying.",
-  "A true work of art. The art of chaos, but art nonetheless!",
-  "The lines! The curves! The complete disregard for the prompt! Stunning.",
-  "We've sent this to the Louvre. They haven't responded yet.",
-];
+const AI_ANALYSIS_SIZE = 96;
+const AI_DRAWN_PIXEL_LIGHTNESS_THRESHOLD = 245;
 
-function resultsScreen(drawingData, round, promptData) {
-  const comment = PLACEHOLDER_COMMENTS[Math.floor(Math.random() * PLACEHOLDER_COMMENTS.length)];
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function average(values) {
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function rgbToHsl(r, g, b) {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === rn) h = (gn - bn) / d + (gn < bn ? 6 : 0);
+    else if (max === gn) h = (bn - rn) / d + 2;
+    else h = (rn - gn) / d + 4;
+    h /= 6;
+  }
+
+  return { h: h * 360, s, l };
+}
+
+function classifyColorGroup(r, g, b) {
+  const { h, s, l } = rgbToHsl(r, g, b);
+  if (s < 0.12) {
+    if (l < 0.2) return "black";
+    if (l > 0.84) return "white";
+    return "gray";
+  }
+  if (h < 20 || h >= 345) return "red";
+  if (h < 50) return "orange";
+  if (h < 72) return "yellow";
+  if (h < 165) return "green";
+  if (h < 200) return "teal";
+  if (h < 260) return "blue";
+  if (h < 300) return "purple";
+  if (h < 345) return "pink";
+  return "red";
+}
+
+function toScore(value) {
+  return Math.round(clamp01(value) * 100);
+}
+
+const SHAPE_LABELS = {
+  round: "Round/curved",
+  boxy: "Boxy/block",
+  angular: "Angular/pointed",
+  "line-heavy": "Line-heavy",
+  organic: "Organic/character",
+};
+
+const COLOR_LABELS = {
+  red: "Red",
+  orange: "Orange",
+  yellow: "Yellow",
+  green: "Green",
+  teal: "Teal",
+  blue: "Blue",
+  purple: "Purple",
+  pink: "Pink",
+  black: "Black",
+  white: "White",
+  gray: "Gray",
+};
+
+const COLOR_HEX = {
+  red: "#ef4444",
+  orange: "#f97316",
+  yellow: "#eab308",
+  green: "#22c55e",
+  teal: "#14b8a6",
+  blue: "#3b82f6",
+  purple: "#a855f7",
+  pink: "#ec4899",
+  black: "#1f2937",
+  white: "#f8fafc",
+  gray: "#94a3b8",
+};
+
+function titleCaseColor(name) {
+  return COLOR_LABELS[name] || name;
+}
+
+function getTopEntries(obj, count = 3) {
+  return Object.entries(obj || {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, count);
+}
+
+function extractPromptExpectations(promptData) {
+  const text = (promptData && promptData.text ? promptData.text : "").toLowerCase();
+  const subject = (promptData && promptData.subject ? promptData.subject : "").toLowerCase();
+  const action = (promptData && promptData.action ? promptData.action : "").toLowerCase();
+  const combined = `${text} ${subject} ${action}`.replace(/\s+/g, " ").trim();
+  const expectedColors = new Map();
+  const shapeTags = new Set();
+  let placement = "center";
+  let complexityTarget = 0.48;
+
+  function addColor(color, weight = 1) {
+    expectedColors.set(color, (expectedColors.get(color) || 0) + weight);
+  }
+
+  function hasAny(words) {
+    return words.some((word) => combined.includes(word));
+  }
+
+  function applyColorRule(rule, boost = 1) {
+    if (!rule || !rule.palette) return;
+    Object.entries(rule.palette).forEach(([colorName, weight]) => {
+      addColor(colorName, weight * boost);
+    });
+  }
+
+  const COLOR_RULES = [
+    {
+      keywords: ["flamingo", "princess", "unicorn", "fairy", "cupcake", "mermaid", "peacock"],
+      palette: { pink: 2.2, purple: 0.8 },
+    },
+    {
+      keywords: ["ocean", "sea", "river", "lake", "water", "rain", "cloud", "sky", "whale", "dolphin", "shark", "jellyfish", "octopus", "seahorse", "starfish", "snorkeling", "scuba"],
+      palette: { blue: 2.2, teal: 1.2 },
+    },
+    {
+      keywords: ["forest", "tree", "grass", "leaf", "frog", "crocodile", "alligator", "iguana", "chameleon", "dragon", "alien", "cactus", "gardener", "planting"],
+      palette: { green: 2.1, yellow: 0.7 },
+    },
+    {
+      keywords: ["fire", "lava", "flaming", "sun", "phoenix", "rocket", "explosion", "sparklers", "candles", "campfire"],
+      palette: { orange: 2.2, red: 1.5, yellow: 1.1 },
+    },
+    {
+      keywords: ["night", "space", "moon", "shadow", "vampire", "werewolf", "ghost", "wizard", "ninja", "crow", "raven", "orca"],
+      palette: { black: 1.8, purple: 1.2, blue: 0.7 },
+    },
+    {
+      keywords: ["snow", "ice", "polar", "winter", "snowman", "cloud", "ghost", "ice wall"],
+      palette: { white: 2.2, blue: 1.0, gray: 0.6 },
+    },
+    {
+      keywords: ["robot", "clockwork", "car", "truck", "bus", "train", "spaceship", "laptop", "phone", "machine", "mechanic", "engineer", "metal"],
+      palette: { gray: 1.8, blue: 1.0, black: 0.9 },
+    },
+    {
+      keywords: ["penguin", "zebra", "panda", "chess", "newspaper", "photo", "swan"],
+      palette: { white: 1.8, black: 1.6, gray: 0.7 },
+    },
+    {
+      keywords: ["lion", "giraffe", "camel", "bear", "fox", "deer", "boar", "yak", "alpaca", "llama", "gingerbread", "wood"],
+      palette: { orange: 1.6, yellow: 0.9, black: 0.5 },
+    },
+    {
+      keywords: ["treehouse", "mountain", "hiker", "camping", "fossils", "archaeologist", "paleontologist", "desert", "sandcastle", "castle"],
+      palette: { yellow: 1.4, orange: 1.0, green: 0.8 },
+    },
+    {
+      keywords: ["treasure", "crown", "gold", "trophy", "star", "sunflower"],
+      palette: { yellow: 2.1, orange: 1.0 },
+    },
+    {
+      keywords: ["flower", "butterfly", "ladybug", "parrot", "toucan", "paint", "rainbow", "fireworks", "party"],
+      palette: { pink: 1.0, yellow: 1.0, blue: 1.0, green: 1.0, red: 1.0 },
+    },
+  ];
+
+  // Apply matched color rules with a stronger boost for exact subject matches.
+  COLOR_RULES.forEach((rule) => {
+    const subjectMatch = rule.keywords.some((kw) => subject.includes(kw));
+    const generalMatch = rule.keywords.some((kw) => combined.includes(kw));
+    if (!subjectMatch && !generalMatch) return;
+    applyColorRule(rule, subjectMatch ? 1.25 : 1);
+  });
+
+  // If no color expectation was matched, keep a balanced default palette.
+  if (!expectedColors.size) {
+    addColor("blue", 0.8);
+    addColor("green", 0.8);
+    addColor("orange", 0.8);
+  }
+
+  if (hasAny(["sun", "moon", "planet", "ball", "bubble", "wheel", "eye", "head", "jellyfish"])) shapeTags.add("round");
+  if (hasAny(["robot", "house", "castle", "book", "bus", "train", "car", "truck", "building", "laptop", "phone"])) shapeTags.add("boxy");
+  if (hasAny(["tree", "mountain", "pyramid", "arrow", "triangle", "crown"])) shapeTags.add("angular");
+  if (hasAny(["rain", "ladder", "fence", "skateboard", "sword", "guitar", "bridge", "stairs"])) shapeTags.add("line-heavy");
+  if (hasAny(["cat", "dog", "bear", "fox", "lion", "tiger", "rabbit", "otter", "human", "wizard", "pirate", "ninja", "astronaut"])) shapeTags.add("organic");
+
+  if (hasAny(["juggling", "dancing", "surfing", "flying", "building", "fighting", "playing", "driving", "cooking", "time traveling", "teleporting", "exploring", "casting"])) {
+    complexityTarget = 0.62;
+  } else if (hasAny(["reading", "standing", "holding", "walking"])) {
+    complexityTarget = 0.52;
+  }
+
+  if (hasAny(["flying", "hovering", "parachuting", "sky", "moonwalking", "jumping", "hang gliding"])) placement = "upper";
+  if (hasAny(["swimming", "diving", "snorkeling", "underwater", "fishing", "planting", "digging"])) placement = "lower";
+
+  return {
+    expectedColors,
+    shapeTags: Array.from(shapeTags),
+    placement,
+    complexityTarget,
+  };
+}
+
+function analyzeDrawingPixels(imageData) {
+  const { data, width, height } = imageData;
+  const totalPixels = width * height;
+  const mask = new Uint8Array(totalPixels);
+  const colorCounts = {};
+  let drawnPixels = 0;
+  let saturatedPixels = 0;
+  let saturationSum = 0;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  let xSum = 0;
+  let ySum = 0;
+  let occupiedCells = 0;
+  const occupancyGridSize = 12;
+  const occupancyGrid = new Uint8Array(occupancyGridSize * occupancyGridSize);
+
+  function toIndex(x, y) {
+    return y * width + x;
+  }
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const pixelIdx = (y * width + x) * 4;
+      const r = data[pixelIdx];
+      const g = data[pixelIdx + 1];
+      const b = data[pixelIdx + 2];
+      const a = data[pixelIdx + 3];
+      const isDrawn = a > 5 && !(r > AI_DRAWN_PIXEL_LIGHTNESS_THRESHOLD && g > AI_DRAWN_PIXEL_LIGHTNESS_THRESHOLD && b > AI_DRAWN_PIXEL_LIGHTNESS_THRESHOLD);
+
+      if (!isDrawn) continue;
+      const idx = toIndex(x, y);
+      mask[idx] = 1;
+      drawnPixels++;
+      xSum += x;
+      ySum += y;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+
+      const colorGroup = classifyColorGroup(r, g, b);
+      colorCounts[colorGroup] = (colorCounts[colorGroup] || 0) + 1;
+
+      const gx = Math.min(occupancyGridSize - 1, Math.floor((x / width) * occupancyGridSize));
+      const gy = Math.min(occupancyGridSize - 1, Math.floor((y / height) * occupancyGridSize));
+      const gridIdx = gy * occupancyGridSize + gx;
+      if (!occupancyGrid[gridIdx]) {
+        occupancyGrid[gridIdx] = 1;
+        occupiedCells++;
+      }
+
+      const { s } = rgbToHsl(r, g, b);
+      saturationSum += s;
+      if (s > 0.32) saturatedPixels++;
+    }
+  }
+
+  if (drawnPixels === 0) {
+    return {
+      isBlank: true,
+      areaRatio: 0,
+      bboxRatio: 0,
+      centroidX: 0.5,
+      centroidY: 0.5,
+      compactness: 0,
+      rectangularity: 0,
+      edgeDensity: 0,
+      componentCount: 0,
+      verticalSymmetry: 0,
+      horizontalSymmetry: 0,
+      colorRatios: {},
+      colorDiversity: 0,
+      avgSaturation: 0,
+      vividRatio: 0,
+      occupiedCellsRatio: 0,
+      bboxAspectMax: 1,
+      largestComponentRatio: 0,
+      endpointDensity: 0,
+      junctionDensity: 0,
+      structuralComplexity: 0,
+    };
+  }
+
+  const bboxWidth = maxX - minX + 1;
+  const bboxHeight = maxY - minY + 1;
+  const bboxArea = bboxWidth * bboxHeight;
+  const areaRatio = drawnPixels / totalPixels;
+  const bboxRatio = bboxArea / totalPixels;
+  const bboxAspect = bboxWidth / Math.max(1, bboxHeight);
+  const bboxAspectMax = Math.max(bboxAspect, 1 / bboxAspect);
+  const centroidX = xSum / drawnPixels / (width - 1 || 1);
+  const centroidY = ySum / drawnPixels / (height - 1 || 1);
+  const occupiedCellsRatio = occupiedCells / (occupancyGridSize * occupancyGridSize);
+
+  let perimeter = 0;
+  let edgeLike = 0;
+  const gray = new Float32Array(totalPixels);
+  for (let i = 0; i < totalPixels; i++) {
+    const p = i * 4;
+    gray[i] = 0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2];
+  }
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = toIndex(x, y);
+      if (!mask[idx]) continue;
+
+      const left = x > 0 ? mask[toIndex(x - 1, y)] : 0;
+      const right = x < width - 1 ? mask[toIndex(x + 1, y)] : 0;
+      const up = y > 0 ? mask[toIndex(x, y - 1)] : 0;
+      const down = y < height - 1 ? mask[toIndex(x, y + 1)] : 0;
+      const borderCount = 4 - (left + right + up + down);
+      perimeter += borderCount;
+
+      const gx = x < width - 1 ? Math.abs(gray[idx] - gray[toIndex(x + 1, y)]) : 0;
+      const gy = y < height - 1 ? Math.abs(gray[idx] - gray[toIndex(x, y + 1)]) : 0;
+      if (gx + gy > 55) edgeLike++;
+    }
+  }
+
+  const compactness = clamp01((4 * Math.PI * drawnPixels) / ((perimeter * perimeter) + 1));
+  const rectangularity = clamp01(drawnPixels / bboxArea);
+  const edgeDensity = clamp01(edgeLike / drawnPixels);
+
+  let verticalMatches = 0;
+  let verticalChecks = 0;
+  let horizontalMatches = 0;
+  let horizontalChecks = 0;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const mirrorX = width - 1 - x;
+      if (mirrorX > x) {
+        verticalChecks++;
+        if (mask[toIndex(x, y)] === mask[toIndex(mirrorX, y)]) verticalMatches++;
+      }
+
+      const mirrorY = height - 1 - y;
+      if (mirrorY > y) {
+        horizontalChecks++;
+        if (mask[toIndex(x, y)] === mask[toIndex(x, mirrorY)]) horizontalMatches++;
+      }
+    }
+  }
+
+  const verticalSymmetry = verticalChecks ? verticalMatches / verticalChecks : 0;
+  const horizontalSymmetry = horizontalChecks ? horizontalMatches / horizontalChecks : 0;
+
+  const visited = new Uint8Array(totalPixels);
+  let componentCount = 0;
+  let largestComponentPixels = 0;
+  const queue = [];
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const start = toIndex(x, y);
+      if (!mask[start] || visited[start]) continue;
+      componentCount++;
+      visited[start] = 1;
+      queue.push(start);
+      let componentPixels = 0;
+
+      while (queue.length) {
+        const idx = queue.pop();
+        componentPixels++;
+        const cx = idx % width;
+        const cy = Math.floor(idx / width);
+        const neighbors = [
+          [cx - 1, cy],
+          [cx + 1, cy],
+          [cx, cy - 1],
+          [cx, cy + 1],
+        ];
+        for (const [nx, ny] of neighbors) {
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const ni = toIndex(nx, ny);
+          if (!mask[ni] || visited[ni]) continue;
+          visited[ni] = 1;
+          queue.push(ni);
+        }
+      }
+
+      largestComponentPixels = Math.max(largestComponentPixels, componentPixels);
+    }
+  }
+
+  let endpointCount = 0;
+  let junctionCount = 0;
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = toIndex(x, y);
+      if (!mask[idx]) continue;
+      let neighbors = 0;
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          if (ox === 0 && oy === 0) continue;
+          if (mask[toIndex(x + ox, y + oy)]) neighbors++;
+        }
+      }
+      if (neighbors <= 1) endpointCount++;
+      else if (neighbors >= 3) junctionCount++;
+    }
+  }
+
+  const colorRatios = {};
+  Object.entries(colorCounts).forEach(([name, count]) => {
+    colorRatios[name] = count / drawnPixels;
+  });
+
+  const colorDiversity = Object.keys(colorRatios).length / 8;
+  const avgSaturation = saturationSum / drawnPixels;
+  const vividRatio = saturatedPixels / drawnPixels;
+  const largestComponentRatio = largestComponentPixels / drawnPixels;
+  const endpointDensity = endpointCount / drawnPixels;
+  const junctionDensity = junctionCount / drawnPixels;
+  const structuralComplexity = clamp01((junctionDensity * 25) - (endpointDensity * 4) + 0.18);
+
+  return {
+    isBlank: false,
+    areaRatio,
+    bboxRatio,
+    centroidX,
+    centroidY,
+    compactness,
+    rectangularity,
+    edgeDensity,
+    componentCount,
+    verticalSymmetry,
+    horizontalSymmetry,
+    colorRatios,
+    colorDiversity: clamp01(colorDiversity),
+    avgSaturation: clamp01(avgSaturation),
+    vividRatio: clamp01(vividRatio),
+    occupiedCellsRatio: clamp01(occupiedCellsRatio),
+    bboxAspectMax,
+    largestComponentRatio: clamp01(largestComponentRatio),
+    endpointDensity: clamp01(endpointDensity * 8),
+    junctionDensity: clamp01(junctionDensity * 20),
+    structuralComplexity,
+  };
+}
+
+function scoreFromFeatures(features, expectations) {
+  if (features.isBlank) {
+    return {
+      resemblance: 0,
+      color: 0,
+      accuracy: 0,
+      overall: 0,
+      explanation: "I could not detect any visible strokes yet. Add clear lines or filled shapes to be scored.",
+      breakdown: {
+        resemblance: "No subject silhouette detected yet.",
+        color: "Add visible color strokes to unlock color analysis.",
+        accuracy: "Place the subject clearly on the canvas to improve accuracy.",
+      },
+      expectationReport: {
+        expectedShapes: expectations.shapeTags.map((tag) => SHAPE_LABELS[tag] || tag),
+        detectedShapes: [],
+        expectedPalette: Array.from(expectations.expectedColors.keys()),
+        detectedPalette: [],
+        missingExpectedColors: Array.from(expectations.expectedColors.keys()),
+      },
+    };
+  }
+
+  const shapeSignals = {
+    round: clamp01(features.compactness * 1.25),
+    boxy: clamp01((features.rectangularity * 0.72) + (features.verticalSymmetry * 0.18) + (features.horizontalSymmetry * 0.1)),
+    angular: clamp01((features.edgeDensity * 0.75) + (features.componentCount / 32)),
+    "line-heavy": clamp01((features.edgeDensity * 0.68) + ((1 - features.rectangularity) * 0.32)),
+    organic: clamp01(((1 - features.rectangularity) * 0.45) + (features.colorDiversity * 0.25) + (features.componentCount / 30)),
+  };
+
+  const shapeMatch = expectations.shapeTags.length
+    ? average(expectations.shapeTags.map((tag) => shapeSignals[tag] || 0.35))
+    : clamp01(0.3 + (features.edgeDensity * 0.22) + (features.structuralComplexity * 0.28) + (features.colorDiversity * 0.2));
+
+  let placementTargetY = 0.5;
+  if (expectations.placement === "upper") placementTargetY = 0.35;
+  if (expectations.placement === "lower") placementTargetY = 0.65;
+  const placementScore = clamp01(1 - Math.abs(features.centroidY - placementTargetY) / 0.35);
+
+  const complexityTarget = expectations.complexityTarget;
+  const complexityObserved = clamp01((features.edgeDensity * 0.6) + ((features.componentCount / 28) * 0.4));
+  const complexityScore = clamp01(1 - Math.abs(complexityObserved - complexityTarget) / 0.7);
+
+  const silhouetteScore = clamp01((features.bboxRatio * 0.2) + (features.areaRatio * 1.15));
+
+  const rawResemblance = clamp01(
+    (shapeMatch * 0.48) +
+    (placementScore * 0.2) +
+    (complexityScore * 0.18) +
+    (silhouetteScore * 0.14)
+  );
+
+  let colorMatch = 0;
+  if (expectations.expectedColors.size) {
+    let weighted = 0;
+    let totalWeight = 0;
+    expectations.expectedColors.forEach((weight, colorName) => {
+      const seenRatio = features.colorRatios[colorName] || 0;
+      weighted += clamp01(seenRatio * 3.6) * weight;
+      totalWeight += weight;
+    });
+    colorMatch = totalWeight ? weighted / totalWeight : 0;
+  } else {
+    colorMatch = clamp01((features.colorDiversity * 0.65) + (features.vividRatio * 0.35));
+  }
+  const colorQuality = clamp01((features.avgSaturation * 0.45) + (features.colorDiversity * 0.3) + (features.vividRatio * 0.25));
+  const color = toScore((colorMatch * 0.65) + (colorQuality * 0.35));
+
+  const coverageScore = clamp01(1 - Math.abs(features.areaRatio - 0.2) / 0.22);
+  const centeringScore = clamp01(1 - (Math.abs(features.centroidX - 0.5) + Math.abs(features.centroidY - 0.5)) / 0.8);
+  const coherenceScore = clamp01((features.structuralComplexity * 0.55) + ((1 - Math.abs(features.componentCount - 8) / 24) * 0.45));
+  const stabilityScore = clamp01((features.verticalSymmetry + features.horizontalSymmetry) / 2);
+  const spreadScore = clamp01((features.occupiedCellsRatio - 0.06) / 0.42);
+  const nonLinearityScore = expectations.shapeTags.includes("line-heavy")
+    ? 1
+    : clamp01(1 - ((features.bboxAspectMax - 1.2) / 5.4));
+
+  const subjectPresence = clamp01(
+    (clamp01((features.areaRatio - 0.01) / 0.08) * 0.24) +
+    (spreadScore * 0.3) +
+    (features.structuralComplexity * 0.26) +
+    (nonLinearityScore * 0.2)
+  );
+
+  // Hard cap for minimal-stroke drawings so random lines cannot score highly.
+  const antiCheeseGate = clamp01((subjectPresence - 0.12) / 0.82);
+  const resemblance = toScore(rawResemblance * antiCheeseGate);
+
+  const rawAccuracy = clamp01(
+    (coverageScore * 0.34) +
+    (centeringScore * 0.17) +
+    (coherenceScore * 0.25) +
+    (stabilityScore * 0.1) +
+    (spreadScore * 0.14)
+  );
+  const accuracy = toScore(rawAccuracy * antiCheeseGate);
+
+  const overall = Math.round((resemblance * 0.5) + (color * 0.22) + (accuracy * 0.28));
+
+  const categoryScores = [
+    ["Resemblance", resemblance],
+    ["Color", color],
+    ["Accuracy", accuracy],
+  ].sort((a, b) => b[1] - a[1]);
+  const strongest = categoryScores[0];
+  const weakest = categoryScores[2];
+
+  let hint = "try adding a clearer main subject silhouette.";
+  if (weakest[0] === "Color") hint = "try using more prompt-matching colors with stronger contrast.";
+  if (weakest[0] === "Accuracy") hint = "try centering the subject and keeping details connected.";
+
+  const explanation = `${strongest[0]} is your strongest category at ${strongest[1]}%. For an even better score, ${hint}`;
+  const breakdown = {
+    resemblance: `Shape and silhouette match: ${Math.round(shapeMatch * 100)}%. Subject presence gate: ${Math.round(antiCheeseGate * 100)}%.`,
+    color: `Prompt-color match: ${Math.round(colorMatch * 100)}%. Palette quality: ${Math.round(colorQuality * 100)}%.`,
+    accuracy: `Coverage/spread: ${Math.round(((coverageScore + spreadScore) / 2) * 100)}%. Structure/centering: ${Math.round(((coherenceScore + centeringScore) / 2) * 100)}%.`,
+  };
+
+  const expectedShapeTags = expectations.shapeTags.length
+    ? expectations.shapeTags
+    : ["organic", "line-heavy"];
+
+  const detectedShapeRows = Object.entries(shapeSignals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([name, confidence]) => ({
+      name,
+      label: SHAPE_LABELS[name] || name,
+      confidence: toScore(confidence),
+    }));
+
+  const expectedPaletteEntries = Array.from(expectations.expectedColors.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => name);
+
+  const detectedPalette = getTopEntries(features.colorRatios, 4).map(([name, ratio]) => ({
+    name,
+    label: titleCaseColor(name),
+    ratio: toScore(ratio),
+  }));
+
+  const missingExpectedColors = expectedPaletteEntries.filter((colorName) => {
+    const seen = features.colorRatios[colorName] || 0;
+    return seen < 0.08;
+  });
+
+  const expectationReport = {
+    expectedShapes: expectedShapeTags.map((tag) => SHAPE_LABELS[tag] || tag),
+    detectedShapes: detectedShapeRows,
+    expectedPalette: expectedPaletteEntries,
+    detectedPalette,
+    missingExpectedColors,
+  };
+
+  return {
+    resemblance,
+    color,
+    accuracy,
+    overall,
+    explanation,
+    breakdown,
+    expectationReport,
+  };
+}
+
+function analyzeDrawingWithAI(drawingData, promptData) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = AI_ANALYSIS_SIZE;
+      canvas.height = AI_ANALYSIS_SIZE;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) {
+        resolve({
+          resemblance: 0,
+          color: 0,
+          accuracy: 0,
+          overall: 0,
+          explanation: "Scoring engine could not initialize.",
+          breakdown: {
+            resemblance: "Scoring engine was unavailable.",
+            color: "Scoring engine was unavailable.",
+            accuracy: "Scoring engine was unavailable.",
+          },
+          expectationReport: {
+            expectedShapes: [],
+            detectedShapes: [],
+            expectedPalette: [],
+            detectedPalette: [],
+            missingExpectedColors: [],
+          },
+        });
+        return;
+      }
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      const features = analyzeDrawingPixels(imageData);
+      const expectations = extractPromptExpectations(promptData);
+      resolve(scoreFromFeatures(features, expectations));
+    };
+    img.onerror = () => {
+      resolve({
+        resemblance: 0,
+        color: 0,
+        accuracy: 0,
+        overall: 0,
+        explanation: "Could not read the drawing for analysis.",
+        breakdown: {
+          resemblance: "The submitted image could not be read.",
+          color: "The submitted image could not be read.",
+          accuracy: "The submitted image could not be read.",
+        },
+        expectationReport: {
+          expectedShapes: [],
+          detectedShapes: [],
+          expectedPalette: [],
+          detectedPalette: [],
+          missingExpectedColors: [],
+        },
+      });
+    };
+    img.src = drawingData;
+  });
+}
+
+function resultsScreen(drawingData, round, promptData, aiReport) {
+  const expectedShapeText = aiReport.expectationReport.expectedShapes.length
+    ? aiReport.expectationReport.expectedShapes.join(", ")
+    : "General subject silhouette";
+
+  const detectedShapeText = aiReport.expectationReport.detectedShapes.length
+    ? aiReport.expectationReport.detectedShapes
+        .map((shape) => `${shape.label} (${shape.confidence}%)`)
+        .join(", ")
+    : "No shape profile detected";
+
+  const missingPaletteText = aiReport.expectationReport.missingExpectedColors.length
+    ? aiReport.expectationReport.missingExpectedColors.map((name) => titleCaseColor(name)).join(", ")
+    : "None";
+
+  const expectedPaletteText = aiReport.expectationReport.expectedPalette.length
+    ? aiReport.expectationReport.expectedPalette.map((name) => titleCaseColor(name)).join(", ")
+    : "No strict palette required";
+
+  const detectedPaletteText = aiReport.expectationReport.detectedPalette.length
+    ? aiReport.expectationReport.detectedPalette
+        .map((entry) => `${entry.label} (${entry.ratio}%)`)
+        .join(", ")
+    : "No dominant palette detected";
 
   // Drawing thumbnail
   const thumb = el("img", {
@@ -290,10 +1001,49 @@ function resultsScreen(drawingData, round, promptData) {
     alt: "Your drawing",
   });
 
-  // Speech bubble with comment
+  // Speech bubble with analysis
   const bubble = el("div", { class: "results-bubble" },
     el("div", { class: "results-bubble-tail" }),
-    el("p", { class: "results-comment" }, comment),
+    el("p", { class: "results-comment" }, aiReport.explanation),
+  );
+
+  const detailCopy = {
+    summary: aiReport.explanation,
+    resemblance: `Resemblance: ${aiReport.resemblance}%. ${aiReport.breakdown.resemblance}`,
+    color: `Color: ${aiReport.color}%. ${aiReport.breakdown.color}`,
+    accuracy: `Accuracy: ${aiReport.accuracy}%. ${aiReport.breakdown.accuracy}`,
+    shape: `Expected shape profile: ${expectedShapeText}. Detected shape profile: ${detectedShapeText}.`,
+    palette: `Expected palette: ${expectedPaletteText}. Detected palette: ${detectedPaletteText}. Missing expected colors: ${missingPaletteText}.`,
+  };
+
+  const detailSelect = el("select", { class: "results-detail-select" },
+    el("option", { value: "summary" }, "Summary"),
+    el("option", { value: "resemblance" }, "Resemblance"),
+    el("option", { value: "color" }, "Color"),
+    el("option", { value: "accuracy" }, "Accuracy"),
+    el("option", { value: "shape" }, "Shape Scan"),
+    el("option", { value: "palette" }, "Palette Scan"),
+  );
+
+  const detailText = el("p", { class: "results-detail-content" }, detailCopy.summary);
+  detailSelect.addEventListener("change", (e) => {
+    detailText.textContent = detailCopy[e.target.value] || detailCopy.summary;
+  });
+
+  const detailDropdown = el("details", { class: "results-detail-dropdown" },
+    el("summary", { class: "results-detail-summary" }, "Detailed Analysis"),
+    el("div", { class: "results-detail-wrap" },
+      detailSelect,
+      detailText,
+    ),
+  );
+
+  const overallCard = el("div", { class: "results-overall-card" },
+    el("p", { class: "results-overall-label" }, "Overall Rating"),
+    el("p", { class: "results-overall-value" }, `${aiReport.overall}%`),
+    el("div", { class: "results-overall-meter" },
+      el("div", { class: "results-overall-meter-fill", style: `width:${Math.max(0, Math.min(100, aiReport.overall))}%;` }),
+    ),
   );
 
   // Mascot + bubble side by side
@@ -331,9 +1081,8 @@ function resultsScreen(drawingData, round, promptData) {
       ),
       // Right: placeholder notice + feedback
       el("div", { class: "results-right" },
-        el("div", { class: "results-placeholder-notice" },
-          "⚠️ NOT AI — TEMPORARY PLACEHOLDER",
-        ),
+        overallCard,
+        detailDropdown,
         feedback,
       ),
     ),
@@ -602,21 +1351,30 @@ ctx.putImageData(imageData,0,0);
     const drawingData = canvas.toDataURL();
     const drawDurationSeconds = Math.floor((Date.now() - drawStartedAt) / 1000);
 
-    saveHistoryEntry({
-      promptText: promptData.text,
-      drawingData,
-      createdAt: new Date().toISOString(),
-      drawDurationSeconds,
-      round,
-      endReason: reason,
-    });
-
     // Brief flash message, then transition to results
     timerBox.textContent = reason === "submit" ? "Submitted! ✔" : "Time's up!";
 
     setTimeout(() => {
       window.removeEventListener("resize", resizeCanvas);
-      show(resultsScreen(drawingData, round, promptData));
+      analyzeDrawingWithAI(drawingData, promptData).then((aiReport) => {
+        saveHistoryEntry({
+          promptText: promptData.text,
+          drawingData,
+          createdAt: new Date().toISOString(),
+          drawDurationSeconds,
+          round,
+          endReason: reason,
+          aiScores: {
+            overall: aiReport.overall,
+            resemblance: aiReport.resemblance,
+            color: aiReport.color,
+            accuracy: aiReport.accuracy,
+          },
+          aiBreakdown: aiReport.breakdown,
+          aiSummary: aiReport.explanation,
+        });
+        show(resultsScreen(drawingData, round, promptData, aiReport));
+      });
     }, 600);
   }
 

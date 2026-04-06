@@ -4,6 +4,42 @@
 let bgmTrack = null;
 let sfxEnabled = true;
 let musicEnabled = false; // music off by default
+const CELEBRATION_SFX_SOURCES = ["audio/win31.mp3", "audio/track1.mp3"];
+const ROUND_COUNTDOWN_SFX_SOURCES = [
+  "audio/3-2-1-go-green-screen-footage-2xoehcl8evq.mp3",
+  "audio/track1.mp3",
+];
+const TIME_WARNING_SFX_SOURCES = [
+  "audio/countdown-clock-only.mp3",
+  "audio/track1.mp3",
+];
+
+function createAudioFromSources(sources, options = {}, onReady, onExhausted) {
+  const { volume = 0.7, loop = false } = options;
+
+  function trySource(index) {
+    if (index >= sources.length) {
+      if (typeof onExhausted === "function") onExhausted();
+      return;
+    }
+    const audio = new Audio(sources[index]);
+    audio.volume = volume;
+    audio.loop = loop;
+    audio.preload = "auto";
+    audio.onerror = () => trySource(index + 1);
+    onReady(audio, () => trySource(index + 1));
+  }
+
+  trySource(0);
+}
+
+function playCelebrationSfx() {
+  if (!sfxEnabled) return;
+
+  createAudioFromSources(CELEBRATION_SFX_SOURCES, { volume: 0.7 }, (sfx, tryNext) => {
+    sfx.play().catch(() => tryNext());
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────
 // HELPER — builds a DOM element with attributes and children
@@ -98,9 +134,58 @@ function countdownTimer(onDone) {
   const counts = ["3", "2", "1", "Draw!"];
   let i = 0;
   let paused = false;
+  let countdownSfx = null;
+  let countdownLoop = null;
 
   const numDisplay = el("div", { class: "countdown-number" }, counts[0]);
   const pauseMsg = el("div", { class: "countdown-pause-msg" }, "Paused — tap to resume");
+
+  function startCountdownLoop() {
+    if (countdownLoop) return;
+    countdownLoop = setInterval(() => {
+      if (paused) return;
+      i++;
+      if (i >= counts.length) {
+        clearInterval(countdownLoop);
+        stopCountdownSfx();
+        onDone();
+        return;
+      }
+      numDisplay.textContent = counts[i];
+      numDisplay.classList.remove("pop");
+      void numDisplay.offsetWidth;
+      numDisplay.classList.add("pop");
+    }, 1000);
+  }
+
+  function stopCountdownSfx() {
+    if (!countdownSfx) return;
+    countdownSfx.pause();
+    countdownSfx.currentTime = 0;
+  }
+
+  if (sfxEnabled) {
+    createAudioFromSources(
+      ROUND_COUNTDOWN_SFX_SOURCES,
+      { volume: 0.62 },
+      (audio, tryNext) => {
+        countdownSfx = audio;
+        audio.play()
+          .then(() => {
+            startCountdownLoop();
+          })
+          .catch(() => {
+            countdownSfx = null;
+            tryNext();
+          });
+      },
+      startCountdownLoop,
+    );
+    // Safety fallback so UI never stalls if browser delays media events.
+    setTimeout(startCountdownLoop, 250);
+  } else {
+    startCountdownLoop();
+  }
 
   const screen = el("div", {
     class: "screen countdown-screen",
@@ -108,6 +193,12 @@ function countdownTimer(onDone) {
       paused = !paused;
       pauseMsg.style.display = paused ? "block" : "none";
       numDisplay.style.opacity = paused ? "0.3" : "1";
+      if (!countdownSfx) return;
+      if (paused) {
+        countdownSfx.pause();
+      } else {
+        countdownSfx.play().catch(() => {});
+      }
     }
   },
     el("p", { class: "countdown-label" }, "Get ready to draw!"),
@@ -115,20 +206,6 @@ function countdownTimer(onDone) {
     numDisplay,
     pauseMsg,
   );
-
-  const interval = setInterval(() => {
-    if (paused) return;
-    i++;
-    if (i >= counts.length) {
-      clearInterval(interval);
-      onDone();
-      return;
-    }
-    numDisplay.textContent = counts[i];
-    numDisplay.classList.remove("pop");
-    void numDisplay.offsetWidth;
-    numDisplay.classList.add("pop");
-  }, 1000);
 
   return screen;
 }
@@ -1122,6 +1199,29 @@ let shapeSnapshot = null;
   let undoStack = [];
   let redoStack = [];
   let fillMode = false;
+  let warningSfx = null;
+  let warningSfxStarted = false;
+
+  function stopWarningSfx() {
+    if (!warningSfx) return;
+    warningSfx.pause();
+    warningSfx.currentTime = 0;
+    warningSfx = null;
+    warningSfxStarted = false;
+  }
+
+  function startWarningSfx() {
+    if (warningSfxStarted || !sfxEnabled) return;
+    warningSfxStarted = true;
+
+    createAudioFromSources(TIME_WARNING_SFX_SOURCES, { volume: 0.52, loop: true }, (audio, tryNext) => {
+      warningSfx = audio;
+      audio.play().catch(() => {
+        warningSfx = null;
+        tryNext();
+      });
+    });
+  }
 
   function resizeCanvas() {
     const rect = canvas.getBoundingClientRect();
@@ -1345,6 +1445,7 @@ ctx.putImageData(imageData,0,0);
     if (timeUp) return; // guard against double-trigger
     clearInterval(timerInterval);
     timeUp = true;
+    stopWarningSfx();
     drawing = false;
     submitBtn.disabled = true;
 
@@ -1357,6 +1458,9 @@ ctx.putImageData(imageData,0,0);
     setTimeout(() => {
       window.removeEventListener("resize", resizeCanvas);
       analyzeDrawingWithAI(drawingData, promptData).then((aiReport) => {
+        if (reason === "submit") {
+          playCelebrationSfx();
+        }
         saveHistoryEntry({
           promptText: promptData.text,
           drawingData,
@@ -1581,7 +1685,12 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
 
   const backBtn = el("button", {
     class: "back-btn",
-    onclick() { clearInterval(timerInterval); window.removeEventListener("resize", resizeCanvas); show(mainMenu()); }
+    onclick() {
+      clearInterval(timerInterval);
+      stopWarningSfx();
+      window.removeEventListener("resize", resizeCanvas);
+      show(mainMenu());
+    }
   }, "←");
 
   const screen = el("div", { class: "draw-screen" },
@@ -1604,6 +1713,7 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
     // ⚠️ LAST 5 SECONDS WARNING
     if (timeLeft <= 5) {
       timerBox.classList.add("timer-warning");
+      startWarningSfx();
     }
 
     if (timeLeft <= 0) {

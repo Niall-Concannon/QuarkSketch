@@ -5,6 +5,7 @@ let bgmTrack = null;
 let sfxEnabled = true;
 let musicEnabled = false; // music off by default
 const CELEBRATION_SFX_SOURCES = ["audio/win31.mp3", "audio/track1.mp3"];
+const UI_CLICK_SFX_SOURCES = ["audio/typewriter.mp3", "audio/track1.mp3"];
 const ROUND_COUNTDOWN_SFX_SOURCES = [
   "audio/3-2-1-go-green-screen-footage-2xoehcl8evq.mp3",
   "audio/track1.mp3",
@@ -13,6 +14,8 @@ const TIME_WARNING_SFX_SOURCES = [
   "audio/countdown-clock-only.mp3",
   "audio/track1.mp3",
 ];
+let uiClickSfx = null;
+let uiClickSfxIndex = 0;
 
 function createAudioFromSources(sources, options = {}, onReady, onExhausted) {
   const { volume = 0.7, loop = false } = options;
@@ -40,6 +43,61 @@ function playCelebrationSfx() {
     sfx.play().catch(() => tryNext());
   });
 }
+
+function playUiClickSfx() {
+  if (!sfxEnabled) return;
+
+  primeUiClickSfx();
+  if (!uiClickSfx) return;
+
+  try {
+    uiClickSfx.pause();
+    uiClickSfx.currentTime = 0;
+  } catch {
+    // Ignore seek/pause errors and try playing anyway.
+  }
+
+  uiClickSfx.play().catch(() => {
+    uiClickSfxIndex = Math.min(uiClickSfxIndex + 1, UI_CLICK_SFX_SOURCES.length - 1);
+    uiClickSfx = null;
+    primeUiClickSfx();
+    if (uiClickSfx) {
+      uiClickSfx.play().catch(() => {});
+    }
+  });
+}
+
+function primeUiClickSfx() {
+  if (!sfxEnabled || uiClickSfx) return;
+
+  const source = UI_CLICK_SFX_SOURCES[Math.min(uiClickSfxIndex, UI_CLICK_SFX_SOURCES.length - 1)];
+  uiClickSfx = new Audio(source);
+  uiClickSfx.volume = 0.35;
+  uiClickSfx.preload = "auto";
+  uiClickSfx.load();
+  uiClickSfx.onerror = () => {
+    if (uiClickSfxIndex < UI_CLICK_SFX_SOURCES.length - 1) {
+      uiClickSfxIndex++;
+      uiClickSfx = null;
+      primeUiClickSfx();
+    }
+  };
+}
+
+function addUiClickSfxToButtons(root) {
+  if (!document.__uiClickSfxBound) {
+    document.__uiClickSfxBound = true;
+    document.addEventListener("pointerdown", (event) => {
+      const button = event.target.closest && event.target.closest("button");
+      if (!button) return;
+      if (button.dataset.noUiSfx === "true") return;
+      if (button.closest(".draw-screen")) return;
+      playUiClickSfx();
+    }, true);
+  }
+}
+
+primeUiClickSfx();
 
 // ─────────────────────────────────────────────────────────────────
 // HELPER — builds a DOM element with attributes and children
@@ -109,7 +167,7 @@ function settingsPanel(onClose) {
     sfxEnabled = sfxInput.checked;
   });
 
-  return el("div", { class: "settings-panel" },
+  const panel = el("div", { class: "settings-panel" },
     el("h3", {}, "Settings"),
     el("div", { class: "setting-row" },
       el("span", {}, "Dark Mode"),
@@ -125,6 +183,9 @@ function settingsPanel(onClose) {
     ),
     el("button", { class: "close-btn", onclick: onClose }, "Close"),
   );
+
+  addUiClickSfxToButtons(panel);
+  return panel;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -314,7 +375,7 @@ function historyScreen() {
         el("p", { class: "history-empty-sub" }, "Finish a round and your drawings will appear here."),
       );
 
-  return el("div", { class: "screen history-screen" },
+  const screen = el("div", { class: "screen history-screen" },
     el("img", { class: "logo-img history-logo", src: "quarksketch_logo.png", alt: "QuarkSketch" }),
     el("div", { class: "history-head" },
       el("h2", { class: "history-title" }, "Drawing History"),
@@ -333,16 +394,22 @@ function historyScreen() {
     ),
     list,
   );
+
+  addUiClickSfxToButtons(screen);
+  return screen;
 }
 
 function promptScreen(promptData, onStart) {
-  return el("div", { class: "screen prompt-screen" },
+  const screen = el("div", { class: "screen prompt-screen" },
     el("div", { class: "prompt-card" },
       el("h2", { class: "prompt-title" }, "Draw This Round!"),
       el("p", { class: "prompt-full" }, promptData.text),
       el("button", { class: "btn-play prompt-start-btn", onclick: onStart }, "Start Drawing"),
     ),
   );
+
+  addUiClickSfxToButtons(screen);
+  return screen;
 }
 
 function startRound(round = 1) {
@@ -1169,6 +1236,8 @@ function resultsScreen(drawingData, round, promptData, aiReport) {
     ),
   );
 
+  addUiClickSfxToButtons(screen);
+
   return screen;
 }
 
@@ -1767,6 +1836,8 @@ if (musicEnabled) {
     ),
     settingsSlot,
   );
+
+  addUiClickSfxToButtons(screen);
 }
 
 // kick everything off

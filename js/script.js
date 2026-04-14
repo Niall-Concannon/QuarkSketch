@@ -376,7 +376,7 @@ function historyScreen() {
       );
 
   const screen = el("div", { class: "screen history-screen" },
-    el("img", { class: "logo-img history-logo", src: "quarksketch_logo.png", alt: "QuarkSketch" }),
+    ...(window.innerWidth > 1000 ? [el("img", { class: "logo-img history-logo", src: "quarksketch_logo.png", alt: "QuarkSketch" })] : []),
     el("div", { class: "history-head" },
       el("h2", { class: "history-title" }, "Drawing History"),
       el("div", { class: "history-controls" },

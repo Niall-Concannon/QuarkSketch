@@ -66,6 +66,11 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .logo-img {
   width: 100%;
   max-width: 650px;
@@ -201,6 +206,57 @@ button:active {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 .toggle input:checked + .toggle-track::after { transform: translateX(24px); }
+
+/* ── Mobile styles for settings panel ───────────────────────── */
+@media (max-width: 1000px) {
+  .settings-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    max-width: 360px;
+    width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: fadeIn 0.3s ease-out;
+    background: #ffffff !important;
+    border: 2px solid #ffffff;
+  }
+  
+  .settings-panel::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: -1;
+  }
+  
+  .btn-group {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+  }
+  
+  .btn-group button {
+    flex: 1;
+    min-width: 120px;
+    max-width: 150px;
+  }
+  
+  .screen {
+    padding: 1rem 2rem;
+    gap: 1rem;
+  }
+  
+  .logo-img {
+    max-width: 600px;
+  }
+}
 
 /* ── Drawing Screen ───────────────────────── */
 .draw-screen {
@@ -1244,11 +1300,91 @@ body.dark .history-chip {
   }
 
   .history-list {
-    grid-template-columns: 1fr;
-    max-height: calc(100dvh - 225px);
+    grid-template-columns: repeat(2, 1fr);
+    display: grid;
+    gap: 0.75rem;
+    max-height: calc(100dvh - 180px);
+    overflow-y: auto;
+  }
+
+  .history-list::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .history-list::-webkit-scrollbar-thumb {
+    background: rgba(26, 26, 46, 0.28);
+    border-radius: 999px;
+  }
+
+  .history-card {
+    padding: 0.8rem;
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    background: var(--surface);
+    border: 2px solid var(--text);
   }
 
   .history-thumb {
-    max-width: none;
+    max-height: 120px;
+    width: 100%;
+    height: auto;
+    aspect-ratio: auto;
+    border-radius: 10px;
+    margin-bottom: 0.5rem;
+  }
+
+  .history-meta {
+    gap: 0.4rem;
+  }
+
+  .history-prompt {
+    font-size: 0.85rem;
+    line-height: 1.3;
+  }
+
+  .history-stats {
+    gap: 0.25rem;
+    flex-wrap: wrap;
+  }
+
+  .history-chip {
+    font-size: 0.65rem;
+    padding: 0.15rem 0.3rem;
+    border-radius: 6px;
+  }
+
+  .history-controls {
+    width: 100%;
+    justify-content: space-between;
+    position: static;
+    z-index: auto;
+  }
+
+  .history-clear-btn {
+    display: block;
+    padding: 0.5rem 1.1rem;
+  }
+
+  .history-back-btn {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+  }
+
+  .history-screen {
+    padding: 1rem 1rem 0 1rem !important;
+    gap: 1rem;
+  }
+
+  .history-title {
+    font-size: 2rem;
+  }
+
+  .history-logo {
+    max-width: 150px;
+    display: none;
+  }
+
+  .history-card {
+    padding: 1rem;
   }
 }

@@ -1215,24 +1215,24 @@ function resultsScreen(drawingData, round, promptData, aiReport) {
       el("div", { class: "round-badge" }, `Round ${round}`),
     ),
     el("div", { class: "results-body" },
-      // Left: thumbnail
+      // Left: everything except image
       el("div", { class: "results-left" },
+        feedback,
+        overallCard,
+        detailDropdown,
+        el("div", { class: "results-actions" },
+          exitBtn,
+          nextBtn,
+        ),
+      ),
+      // Right: just the image
+      el("div", { class: "results-right" },
         el("div", { class: "results-thumb-wrap" },
           el("p", { class: "results-prompt-chip" }, promptData.text),
           thumb,
           el("p", { class: "results-thumb-label" }, "Your Masterpiece"),
         ),
       ),
-      // Right: placeholder notice + feedback
-      el("div", { class: "results-right" },
-        overallCard,
-        detailDropdown,
-        feedback,
-      ),
-    ),
-    el("div", { class: "results-actions" },
-      exitBtn,
-      nextBtn,
     ),
   );
 

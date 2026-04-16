@@ -99,6 +99,744 @@ function addUiClickSfxToButtons(root) {
 
 primeUiClickSfx();
 
+const ONLINE_SERVER_STORAGE_KEY = "quarkSketchOnlineServer";
+const ONLINE_NAME_STORAGE_KEY = "quarkSketchOnlineName";
+const THEME_STORAGE_KEY = "quarkSketchTheme";
+
+const onlineState = {
+  ws: null,
+  connected: false,
+  playerId: null,
+  room: null,
+  role: null,
+  serverUrl: "",
+  displayName: "",
+  lastError: "",
+  submissionStatus: {
+    submittedCount: 0,
+    totalPlayers: 0,
+  },
+  startRoundPending: false,
+  peerPreviews: new Map(),
+  roundReactions: {},
+  lastResults: null,
+};
+
+function getStoredTheme() {
+  const stored = localStorage.getItem(THEME_STORAGE_KEY);
+  return stored === "dark" ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+  const isDark = theme === "dark";
+  document.body.classList.toggle("dark", isDark);
+  localStorage.setItem(THEME_STORAGE_KEY, isDark ? "dark" : "light");
+}
+
+function toggleTheme() {
+  const next = document.body.classList.contains("dark") ? "light" : "dark";
+  applyTheme(next);
+  show(mainMenu());
+}
+
+function themeToggleBtn() {
+  const dark = document.body.classList.contains("dark");
+  return el("button", {
+    class: "theme-toggle-btn",
+    onclick() {
+      const next = document.body.classList.contains("dark") ? "light" : "dark";
+      applyTheme(next);
+      if (document.querySelector(".online-lobby-screen")) {
+        show(onlineLobbyScreen());
+        return;
+      }
+      if (document.querySelector(".online-multi-screen")) {
+        show(onlineMultiplayerScreen());
+        return;
+      }
+      if (document.querySelector(".online-waiting-screen")) {
+        show(onlineWaitingScreen());
+        return;
+      }
+      if (document.querySelector(".online-results-screen")) {
+        show(onlineResultsScreen(onlineState.lastResults));
+        return;
+      }
+      show(mainMenu());
+    },
+  }, dark ? "Light Mode" : "Dark Mode");
+}
+
+function fullscreenToggleBtn() {
+  return el("button", {
+    class: "theme-toggle-btn fullscreen-toggle-btn",
+    onclick() {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+        return;
+      }
+      document.documentElement.requestFullscreen().catch(() => {});
+    },
+  }, "Fullscreen");
+}
+
+function onlineTopControls() {
+  return el("div", { class: "online-top-controls" },
+    themeToggleBtn(),
+    fullscreenToggleBtn(),
+  );
+}
+
+applyTheme(getStoredTheme());
+
+function getDefaultOnlineServerUrl() {
+  if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${wsProtocol}//${window.location.host}`;
+  }
+  const stored = localStorage.getItem(ONLINE_SERVER_STORAGE_KEY);
+  if (stored) return stored;
+  return "ws://localhost:8080";
+}
+
+function sanitizeRoomCode(value) {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+}
+
+function toJoinPageUrl(roomCode) {
+  const normalizedCode = sanitizeRoomCode(roomCode);
+  let baseUrl = "";
+
+  if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+    baseUrl = `${window.location.origin}${window.location.pathname}`;
+  } else {
+    const fallback = String(getDefaultOnlineServerUrl() || "ws://localhost:8080").replace(/^ws:/i, "http:").replace(/^wss:/i, "https:");
+    baseUrl = `${fallback.replace(/\/$/, "")}/`;
+  }
+
+  const url = new URL(baseUrl);
+  if (normalizedCode) url.searchParams.set("room", normalizedCode);
+  return url.toString();
+}
+
+function readJoinParamsFromUrl() {
+  if (!window.location.search) return { roomCode: "" };
+  const params = new URLSearchParams(window.location.search);
+  return {
+    roomCode: sanitizeRoomCode(params.get("room") || ""),
+  };
+}
+
+function isLocalhostPage() {
+  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+}
+
+function isOnlineHost() {
+  if (onlineState.role === "host") return true;
+  return Boolean(onlineState.room && onlineState.playerId && onlineState.room.hostId === onlineState.playerId);
+}
+
+function getOnlinePeerPreviewEntries() {
+  return Array.from(onlineState.peerPreviews.values());
+}
+
+function emitOnlinePreviewUpdated() {
+  window.dispatchEvent(new CustomEvent("quark-online-preview-updated"));
+}
+
+function disconnectOnlineSocket() {
+  if (onlineState.ws) {
+    try {
+      onlineState.ws.close();
+    } catch {
+      // Ignore close failures.
+    }
+  }
+  onlineState.ws = null;
+  onlineState.connected = false;
+  onlineState.room = null;
+  onlineState.role = null;
+  onlineState.startRoundPending = false;
+  onlineState.peerPreviews.clear();
+  onlineState.roundReactions = {};
+  onlineState.submissionStatus = { submittedCount: 0, totalPlayers: 0 };
+}
+
+function onlineSend(type, payload = {}) {
+  if (!onlineState.ws || onlineState.ws.readyState !== WebSocket.OPEN) return false;
+  onlineState.ws.send(JSON.stringify({ type, payload }));
+  return true;
+}
+
+function onOnlineRoundFinished(result) {
+  const payload = {
+    drawingData: result.drawingData,
+    aiScores: {
+      overall: result.aiReport.overall,
+      resemblance: result.aiReport.resemblance,
+      color: result.aiReport.color,
+      accuracy: result.aiReport.accuracy,
+    },
+    endReason: result.reason,
+    drawDurationSeconds: result.drawDurationSeconds,
+  };
+
+  onlineSend("submit_round", payload);
+  onlineState.submissionStatus = {
+    submittedCount: 1,
+    totalPlayers: onlineState.room?.players?.length || 2,
+  };
+  show(onlineWaitingScreen());
+}
+
+function handleOnlineMessage(message) {
+  const { type, payload = {} } = message || {};
+
+  if (type === "welcome") {
+    onlineState.playerId = payload.playerId || null;
+    if (onlineState.room && onlineState.playerId) {
+      onlineState.role = onlineState.room.hostId === onlineState.playerId ? "host" : "guest";
+    }
+    return;
+  }
+
+  if (type === "error") {
+    onlineState.startRoundPending = false;
+    onlineState.lastError = payload.message || "Online error";
+    if (document.querySelector(".online-lobby-screen")) {
+      show(onlineLobbyScreen());
+      return;
+    }
+    if (document.querySelector(".online-multi-screen")) {
+      show(onlineMultiplayerScreen());
+    }
+    return;
+  }
+
+  if (type === "left_room") {
+    onlineState.room = null;
+    onlineState.role = null;
+    onlineState.startRoundPending = false;
+    onlineState.peerPreviews.clear();
+    onlineState.roundReactions = {};
+    show(onlineMultiplayerScreen());
+    return;
+  }
+
+  if (type === "room_created" || type === "room_joined" || type === "room_update") {
+    if (payload.room) {
+      if (payload.playerId) onlineState.playerId = payload.playerId;
+      onlineState.room = payload.room;
+      if (type === "room_created") {
+        onlineState.role = "host";
+      } else if (type === "room_joined") {
+        onlineState.role = "guest";
+      } else if (onlineState.playerId) {
+        onlineState.role = payload.room.hostId === onlineState.playerId ? "host" : "guest";
+      }
+      onlineState.lastError = "";
+      if (!onlineState.room.hasActiveRound) {
+        onlineState.startRoundPending = false;
+      }
+      if (!onlineState.room.hasActiveRound) {
+        onlineState.peerPreviews.clear();
+      }
+    }
+    if (type !== "room_update" || document.querySelector(".online-lobby-screen")) {
+      show(onlineLobbyScreen());
+    }
+    return;
+  }
+
+  if (type === "round_started") {
+    onlineState.startRoundPending = false;
+    onlineState.peerPreviews.clear();
+    onlineState.submissionStatus = { submittedCount: 0, totalPlayers: payload.room?.players?.length || 2 };
+    show(countdownTimer(() => {
+      show(drawingScreen(payload.round, payload.promptData, {
+        roundDuration: payload.duration,
+        onRoundFinished: onOnlineRoundFinished,
+        enablePeerPreview: true,
+        isHostController: payload.room?.hostId === onlineState.playerId,
+        getPeerPreviews: getOnlinePeerPreviewEntries,
+        onPreviewData(drawingData) {
+          onlineSend("drawing_preview", { drawingData });
+        },
+        onForceEndRound() {
+          onlineSend("force_end_round");
+        },
+        onExitRound() {
+          onlineSend("leave_room");
+          show(onlineMultiplayerScreen());
+        },
+      }));
+    }, {
+      allowLocalToggle: payload.room?.hostId === onlineState.playerId,
+      onPauseChange(paused) {
+        onlineSend("countdown_pause", { paused });
+      },
+    }));
+    return;
+  }
+
+  if (type === "submission_status") {
+    onlineState.submissionStatus = {
+      submittedCount: payload.submittedCount || 0,
+      totalPlayers: payload.totalPlayers || 0,
+    };
+    if (document.querySelector(".online-waiting-screen")) {
+      show(onlineWaitingScreen());
+    }
+    return;
+  }
+
+  if (type === "round_results") {
+    onlineState.lastResults = payload;
+    onlineState.roundReactions = payload.reactions || {};
+    onlineState.peerPreviews.clear();
+    show(onlineResultsScreen(payload));
+    return;
+  }
+
+  if (type === "countdown_pause") {
+    window.dispatchEvent(new CustomEvent("quark-online-countdown-pause", {
+      detail: { paused: Boolean(payload.paused) },
+    }));
+    return;
+  }
+
+  if (type === "drawing_preview") {
+    const playerId = payload.playerId;
+    if (!playerId || playerId === onlineState.playerId) return;
+    onlineState.peerPreviews.set(playerId, {
+      playerId,
+      playerName: payload.playerName || "Player",
+      drawingData: payload.drawingData || "",
+      updatedAt: Date.now(),
+    });
+    emitOnlinePreviewUpdated();
+    if (document.querySelector(".online-waiting-screen")) {
+      show(onlineWaitingScreen());
+    }
+    return;
+  }
+
+  if (type === "round_reactions") {
+    onlineState.roundReactions = payload.reactions || {};
+    if (document.querySelector(".online-results-screen") && onlineState.lastResults) {
+      show(onlineResultsScreen(onlineState.lastResults));
+    }
+  }
+}
+
+function connectOnline(serverUrl) {
+  return new Promise((resolve, reject) => {
+    const targetUrl = String(serverUrl || "").trim();
+    if (!targetUrl) {
+      reject(new Error("Server URL is required."));
+      return;
+    }
+
+    disconnectOnlineSocket();
+
+    let socket;
+    try {
+      socket = new WebSocket(targetUrl);
+    } catch {
+      reject(new Error("Could not connect to server."));
+      return;
+    }
+
+    onlineState.ws = socket;
+    onlineState.serverUrl = targetUrl;
+    onlineState.connected = false;
+
+    socket.addEventListener("open", () => {
+      onlineState.connected = true;
+      localStorage.setItem(ONLINE_SERVER_STORAGE_KEY, targetUrl);
+      resolve();
+    }, { once: true });
+
+    socket.addEventListener("error", () => {
+      onlineState.connected = false;
+      reject(new Error("WebSocket connection failed."));
+    }, { once: true });
+
+    socket.addEventListener("close", () => {
+      onlineState.connected = false;
+      onlineState.room = null;
+      onlineState.role = null;
+    });
+
+    socket.addEventListener("message", (event) => {
+      let parsed;
+      try {
+        parsed = JSON.parse(String(event.data));
+      } catch {
+        return;
+      }
+      handleOnlineMessage(parsed);
+    });
+  });
+}
+
+function onlineMultiplayerScreen() {
+  const joinParams = readJoinParamsFromUrl();
+  const initialName = localStorage.getItem(ONLINE_NAME_STORAGE_KEY) || "";
+
+  const nameInput = el("input", {
+    class: "online-input",
+    type: "text",
+    placeholder: "Your name",
+    value: initialName,
+    maxlength: "24",
+  });
+
+  const codeInput = el("input", {
+    class: "online-input",
+    type: "text",
+    placeholder: "Room code",
+    value: joinParams.roomCode,
+    maxlength: "6",
+    oninput(event) {
+      event.target.value = sanitizeRoomCode(event.target.value);
+    },
+  });
+
+  const defaultStatus = joinParams.roomCode
+    ? "Invite link detected. Enter your name and click Join Room."
+    : "Create a room as host or join with a room code.";
+  const statusText = el("p", { class: "online-status" }, onlineState.lastError || defaultStatus);
+
+  function getName() {
+    const value = String(nameInput.value || "").trim().slice(0, 24);
+    const fallback = "Player";
+    const name = value || fallback;
+    onlineState.displayName = name;
+    localStorage.setItem(ONLINE_NAME_STORAGE_KEY, name);
+    return name;
+  }
+
+  function setBusy(message) {
+    statusText.textContent = message;
+  }
+
+  const connectUrl = getDefaultOnlineServerUrl();
+
+  const createBtn = el("button", {
+    class: "btn-play",
+    onclick() {
+      setBusy("Connecting and creating room...");
+      onlineState.role = "host";
+      connectOnline(connectUrl)
+        .then(() => {
+          onlineSend("create_room", { name: getName() });
+        })
+        .catch((err) => {
+          statusText.textContent = err.message || "Could not connect to server.";
+        });
+    },
+  }, "Create Room");
+
+  const joinBtn = el("button", {
+    class: "btn-multi",
+    onclick() {
+      const roomCode = sanitizeRoomCode(codeInput.value);
+      if (!roomCode) {
+        statusText.textContent = "Enter a valid room code.";
+        return;
+      }
+      setBusy("Connecting and joining room...");
+      onlineState.role = "guest";
+      connectOnline(connectUrl)
+        .then(() => {
+          onlineSend("join_room", { code: roomCode, name: getName() });
+        })
+        .catch((err) => {
+          statusText.textContent = err.message || "Could not connect to server.";
+        });
+    },
+  }, "Join Room");
+
+  const backBtn = el("button", {
+    class: "btn-settings",
+    onclick() {
+      show(mainMenu());
+    },
+  }, "Back");
+
+  const screen = el("div", { class: "screen online-multi-screen" },
+    el("img", { class: "logo-img", src: "quarksketch_logo.png", alt: "QuarkSketch" }),
+    el("div", { class: "online-card" },
+      onlineTopControls(),
+      el("h2", { class: "online-title" }, "Online Rooms"),
+      el("p", { class: "online-subtitle" }, "Share one link, then guest joins in one tap."),
+      el("label", { class: "online-label" }, "Name"),
+      nameInput,
+      el("label", { class: "online-label" }, "Room code (for guests)"),
+      codeInput,
+      el("div", { class: "btn-group online-actions" },
+        createBtn,
+        joinBtn,
+      ),
+      isLocalhostPage()
+        ? el("p", { class: "online-error" }, "For other devices, open this game using your computer's LAN IP instead of localhost.")
+        : null,
+      backBtn,
+      statusText,
+    ),
+  );
+
+  if (joinParams.roomCode) {
+    setTimeout(() => {
+      joinBtn.click();
+    }, 0);
+  }
+
+  addUiClickSfxToButtons(screen);
+  return screen;
+}
+
+function onlineLobbyScreen() {
+  if (!onlineState.room) return onlineMultiplayerScreen();
+
+  const amHost = isOnlineHost();
+  const roleText = amHost ? "Host" : "Guest";
+  const shareRoomCode = onlineState.room.code;
+  const shareJoinUrl = isLocalhostPage()
+    ? `http://YOUR_HOST_IP:8080/?room=${shareRoomCode}`
+    : toJoinPageUrl(shareRoomCode);
+
+  const inviteText = [
+    "Join my QuarkSketch room",
+    `URL: ${shareJoinUrl}`,
+    `Room code: ${shareRoomCode}`,
+    isLocalhostPage() ? "Host note: replace YOUR_HOST_IP with the host computer LAN IP." : null,
+  ].filter(Boolean).join("\n");
+
+  const invitePreview = el("p", { class: "online-invite-preview" }, shareJoinUrl);
+
+  const copyInviteBtn = el("button", {
+    class: "btn-history",
+    onclick() {
+      const fallback = () => {
+        const helper = el("textarea", { class: "online-copy-helper" }, inviteText);
+        document.body.appendChild(helper);
+        helper.select();
+        try {
+          document.execCommand("copy");
+          invitePreview.textContent = "Invite copied. Send it to your friend.";
+        } catch {
+          invitePreview.textContent = "Copy failed. Manually share the URL shown above.";
+        }
+        document.body.removeChild(helper);
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(inviteText)
+          .then(() => {
+            invitePreview.textContent = "Invite copied. Send it to your friend.";
+          })
+          .catch(fallback);
+        return;
+      }
+
+      fallback();
+    },
+  }, "Copy Invite");
+
+  const playerRows = onlineState.room.players.map((player) =>
+    el("li", { class: "online-player-row" },
+      el("span", {}, `${player.name}${player.id === onlineState.playerId ? " (You)" : ""}`),
+      el("span", { class: "online-player-role" }, player.id === onlineState.room.hostId ? "Host" : "Guest"),
+    ),
+  );
+
+  const startBtn = amHost
+    ? el("button", {
+        class: "btn-play",
+        onclick() {
+          if (onlineState.room.players.length < 2) {
+            onlineState.lastError = "Need at least 2 players before starting.";
+            show(onlineLobbyScreen());
+            return;
+          }
+          if (onlineState.room.hasActiveRound) {
+            onlineState.lastError = "Round already active. Finish it before starting another.";
+            show(onlineLobbyScreen());
+            return;
+          }
+          if (!onlineState.connected) {
+            onlineState.lastError = "Connection lost. Rejoin the room and try again.";
+            show(onlineLobbyScreen());
+            return;
+          }
+
+          const promptData = getRoundPrompt();
+          const sent = onlineSend("start_round", { promptData, duration: 30 });
+          if (!sent) {
+            onlineState.lastError = "Could not send start request. Rejoin the room and try again.";
+            show(onlineLobbyScreen());
+            return;
+          }
+
+          onlineState.startRoundPending = true;
+          onlineState.lastError = "";
+          show(onlineLobbyScreen());
+        },
+      }, "Start Round")
+    : null;
+
+  const leaveBtn = el("button", {
+    class: "btn-settings",
+    onclick() {
+      onlineSend("leave_room");
+      disconnectOnlineSocket();
+      show(onlineMultiplayerScreen());
+    },
+  }, "Leave Room");
+
+  const waitingText = amHost
+    ? (onlineState.startRoundPending
+        ? "Starting round for everyone..."
+        : (onlineState.room.players.length < 2 ? "Waiting for at least one guest to join." : "Ready to start the round."))
+    : "Waiting for host to start the round.";
+
+  const screen = el("div", { class: "screen online-lobby-screen" },
+    el("div", { class: "online-card" },
+      onlineTopControls(),
+      el("h2", { class: "online-title" }, `Room ${onlineState.room.code}`),
+      el("p", { class: "online-subtitle" }, `${roleText} connected. Share this code with your friend.`),
+      el("p", { class: "online-status" }, waitingText),
+      el("div", { class: "online-invite-wrap" },
+        el("p", { class: "online-label" }, "Invite URL"),
+        invitePreview,
+        copyInviteBtn,
+      ),
+      onlineState.lastError ? el("p", { class: "online-error" }, onlineState.lastError) : null,
+      el("ul", { class: "online-player-list" }, ...playerRows),
+      el("div", { class: "btn-group online-actions" },
+        startBtn,
+        leaveBtn,
+      ),
+    ),
+  );
+
+  addUiClickSfxToButtons(screen);
+  return screen;
+}
+
+function onlineWaitingScreen() {
+  const submitted = onlineState.submissionStatus.submittedCount || 0;
+  const total = onlineState.submissionStatus.totalPlayers || onlineState.room?.players?.length || 2;
+  const previews = getOnlinePeerPreviewEntries();
+
+  const previewGallery = previews.length
+    ? el("div", { class: "online-wait-gallery" },
+        ...previews.map((entry) =>
+          el("article", { class: "online-wait-card" },
+            el("p", { class: "online-player-name" }, entry.playerName || "Player"),
+            entry.drawingData
+              ? el("img", { class: "online-wait-image", src: entry.drawingData, alt: `${entry.playerName || "Player"} drawing` })
+              : el("div", { class: "online-result-missing" }, "No preview yet"),
+          ),
+        ),
+      )
+    : el("p", { class: "online-status" }, "Waiting for other players to draw...");
+
+  const screen = el("div", { class: "screen online-waiting-screen" },
+    el("div", { class: "online-card" },
+      onlineTopControls(),
+      el("h2", { class: "online-title" }, "Waiting For Players"),
+      el("p", { class: "online-subtitle" }, "Your drawing is submitted."),
+      el("p", { class: "online-progress" }, `Submitted: ${submitted}/${total}`),
+      previewGallery,
+      el("p", { class: "online-status" }, "Results will appear automatically when everyone is done."),
+    ),
+  );
+
+  addUiClickSfxToButtons(screen);
+  return screen;
+}
+
+function onlineResultsScreen(resultPayload) {
+  const results = Array.isArray(resultPayload?.results) ? resultPayload.results : [];
+  const promptText = resultPayload?.promptData?.text || "Prompt unavailable";
+  const round = resultPayload?.round || 1;
+
+  function voteOnDrawing(targetPlayerId, currentVote, nextVote) {
+    const vote = currentVote === nextVote ? "clear" : nextVote;
+    onlineSend("vote_drawing", {
+      round,
+      targetPlayerId,
+      vote,
+    });
+  }
+
+  const cards = results.map((entry, index) => {
+    const score = Number(entry?.aiScores?.overall || 0);
+    const reaction = onlineState.roundReactions[entry.playerId] || { up: 0, down: 0, myVote: null };
+    return el("article", { class: "online-result-card" },
+      el("p", { class: "online-placement" }, `#${index + 1}`),
+      el("p", { class: "online-player-name" }, entry.playerName || "Player"),
+      entry.drawingData
+        ? el("img", { class: "online-result-thumb", src: entry.drawingData, alt: `${entry.playerName || "Player"} drawing` })
+        : el("div", { class: "online-result-missing" }, "No drawing submitted"),
+      el("p", { class: "online-score" }, `${score}%`),
+      el("div", { class: "online-reactions" },
+        el("button", {
+          class: `online-reaction-btn ${reaction.myVote === "up" ? "active" : ""}`,
+          onclick() {
+            voteOnDrawing(entry.playerId, reaction.myVote, "up");
+          },
+        }, `👍 ${reaction.up || 0}`),
+        el("button", {
+          class: `online-reaction-btn ${reaction.myVote === "down" ? "active" : ""}`,
+          onclick() {
+            voteOnDrawing(entry.playerId, reaction.myVote, "down");
+          },
+        }, `👎 ${reaction.down || 0}`),
+      ),
+    );
+  });
+
+  const nextBtn = isOnlineHost()
+    ? el("button", {
+        class: "btn-play",
+        onclick() {
+          onlineState.lastError = "";
+          const promptData = getRoundPrompt();
+          onlineSend("start_round", { promptData, duration: 30 });
+        },
+      }, "Next Round")
+    : null;
+
+  const leaveBtn = el("button", {
+    class: "btn-settings",
+    onclick() {
+      onlineSend("leave_room");
+      disconnectOnlineSocket();
+      show(mainMenu());
+    },
+  }, "Exit");
+
+  const screen = el("div", { class: "screen online-results-screen" },
+    el("div", { class: "online-card online-results-card" },
+      onlineTopControls(),
+      el("h2", { class: "online-title" }, `Round ${round} Results`),
+      el("p", { class: "online-subtitle" }, promptText),
+      el("div", { class: "online-results-grid" }, ...cards),
+      el("div", { class: "btn-group online-actions" },
+        nextBtn,
+        leaveBtn,
+      ),
+    ),
+  );
+
+  addUiClickSfxToButtons(screen);
+  return screen;
+}
+
 // ─────────────────────────────────────────────────────────────────
 // HELPER — builds a DOM element with attributes and children
 // ─────────────────────────────────────────────────────────────────
@@ -121,6 +859,14 @@ function el(tag, attrs, ...children) {
 // ─────────────────────────────────────────────────────────────────
 function show(screen) {
   document.body.innerHTML = "";
+  const requiresLandscape = Boolean(
+    screen && (
+      screen.classList.contains("draw-screen") ||
+      screen.classList.contains("countdown-screen") ||
+      screen.classList.contains("prompt-screen")
+    )
+  );
+  document.body.classList.toggle("require-landscape", requiresLandscape);
   document.body.appendChild(rotateMsg());
   document.body.appendChild(screen);
 }
@@ -191,10 +937,12 @@ function settingsPanel(onClose) {
 // ─────────────────────────────────────────────────────────────────
 // COUNTDOWN TIMER
 // ─────────────────────────────────────────────────────────────────
-function countdownTimer(onDone) {
+function countdownTimer(onDone, options = {}) {
   const counts = ["3", "2", "1", "Draw!"];
   let i = 0;
   let paused = false;
+  const allowLocalToggle = options.allowLocalToggle !== false;
+  const onPauseChange = typeof options.onPauseChange === "function" ? options.onPauseChange : null;
   let countdownSfx = null;
   let countdownLoop = null;
 
@@ -251,9 +999,11 @@ function countdownTimer(onDone) {
   const screen = el("div", {
     class: "screen countdown-screen",
     onclick() {
+      if (!allowLocalToggle) return;
       paused = !paused;
       pauseMsg.style.display = paused ? "block" : "none";
       numDisplay.style.opacity = paused ? "0.3" : "1";
+      if (onPauseChange) onPauseChange(paused);
       if (!countdownSfx) return;
       if (paused) {
         countdownSfx.pause();
@@ -263,10 +1013,35 @@ function countdownTimer(onDone) {
     }
   },
     el("p", { class: "countdown-label" }, "Get ready to draw!"),
-    el("p", { class: "countdown-tap-hint" }, "Tap to pause"),
+    el("p", { class: "countdown-tap-hint" }, allowLocalToggle ? "Tap to pause" : "Host controls pause"),
     numDisplay,
     pauseMsg,
   );
+
+  const syncPauseHandler = (event) => {
+    const shouldPause = Boolean(event?.detail?.paused);
+    paused = shouldPause;
+    pauseMsg.style.display = paused ? "block" : "none";
+    numDisplay.style.opacity = paused ? "0.3" : "1";
+    if (!countdownSfx) return;
+    if (paused) {
+      countdownSfx.pause();
+    } else {
+      countdownSfx.play().catch(() => {});
+    }
+  };
+
+  window.addEventListener("quark-online-countdown-pause", syncPauseHandler);
+
+  const cleanup = () => {
+    window.removeEventListener("quark-online-countdown-pause", syncPauseHandler);
+  };
+
+  const originalOnDone = onDone;
+  onDone = () => {
+    cleanup();
+    originalOnDone();
+  };
 
   return screen;
 }
@@ -1244,16 +2019,62 @@ function resultsScreen(drawingData, round, promptData, aiReport) {
 // ─────────────────────────────────────────────────────────────────
 // DRAWING SCREEN — the main canvas where the player draws
 // ─────────────────────────────────────────────────────────────────
-function drawingScreen(round = 1, promptData = getRoundPrompt()) {
+function drawingScreen(round = 1, promptData = getRoundPrompt(), options = {}) {
   const canvas = el("canvas", { class: "draw-canvas" });
   const ctx = canvas.getContext("2d");
 
   const drawStartedAt = Date.now();
-  let timeLeft = 30;
+  const roundDuration = Number(options.roundDuration) > 0 ? Number(options.roundDuration) : 30;
+  let timeLeft = roundDuration;
   let timeUp = false;
+  const onRoundFinished = typeof options.onRoundFinished === "function" ? options.onRoundFinished : null;
+  const onForceEndRound = typeof options.onForceEndRound === "function" ? options.onForceEndRound : null;
+  const enablePeerPreview = Boolean(options.enablePeerPreview);
+  const isHostController = Boolean(options.isHostController);
+  const getPeerPreviews = typeof options.getPeerPreviews === "function" ? options.getPeerPreviews : () => [];
+  const onPreviewData = typeof options.onPreviewData === "function" ? options.onPreviewData : null;
 
   const timerBox = el("div", { class: "game-timer" }, `Time Remaining: ${timeLeft}s`);
   const drawPrompt = el("div", { class: "draw-prompt" }, promptData.text);
+
+  const peerPreviewTitle = el("p", { class: "peer-preview-title" }, "Other Players");
+  const peerPreviewList = el("div", { class: "peer-preview-list" });
+  const peerPreviewPanel = el("div", { class: "peer-preview-panel", style: enablePeerPreview ? "" : "display:none;" },
+    peerPreviewTitle,
+    peerPreviewList,
+  );
+
+  function renderPeerPreviews() {
+    if (!enablePeerPreview) return;
+    const entries = getPeerPreviews();
+    peerPreviewList.innerHTML = "";
+
+    if (!entries.length) {
+      peerPreviewList.appendChild(el("p", { class: "peer-preview-empty" }, "Waiting for other players to draw..."));
+      return;
+    }
+
+    entries.forEach((entry) => {
+      peerPreviewList.appendChild(
+        el("article", { class: "peer-preview-card" },
+          el("p", { class: "peer-preview-name" }, entry.playerName || "Player"),
+          entry.drawingData
+            ? el("img", { class: "peer-preview-image", src: entry.drawingData, alt: `${entry.playerName || "Player"} preview` })
+            : el("div", { class: "peer-preview-empty-image" }, "No preview yet"),
+        ),
+      );
+    });
+  }
+
+  function sendPreviewSnapshot() {
+    if (!enablePeerPreview || !onPreviewData || timeUp) return;
+    try {
+      const snapshot = exportCanvasWithWhiteBackground("image/jpeg", 0.45);
+      onPreviewData(snapshot);
+    } catch {
+      // Ignore preview encoding failures.
+    }
+  }
 
   let currentColor = "#1a1a2e";
   let brushSize = 6; // default = medium
@@ -1298,8 +2119,32 @@ let shapeSnapshot = null;
     canvas.width  = rect.width;
     canvas.height = rect.height;
     ctx.putImageData(snapshot, 0, 0);
+    paintWhiteBackdrop();
     ctx.lineCap  = "round";
     ctx.lineJoin = "round";
+  }
+
+  function paintWhiteBackdrop() {
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-over";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  function exportCanvasWithWhiteBackground(format = "image/png", quality) {
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = canvas.width;
+    exportCanvas.height = canvas.height;
+    const exportCtx = exportCanvas.getContext("2d");
+    if (!exportCtx) return canvas.toDataURL(format, quality);
+    exportCtx.fillStyle = "#ffffff";
+    exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+    exportCtx.drawImage(canvas, 0, 0);
+    if (typeof quality === "number") {
+      return exportCanvas.toDataURL(format, quality);
+    }
+    return exportCanvas.toDataURL(format);
   }
 
   let drawing = false;
@@ -1312,7 +2157,7 @@ let shapeSnapshot = null;
   }
 
   function saveState() {
-    undoStack.push(canvas.toDataURL());
+    undoStack.push(exportCanvasWithWhiteBackground("image/png"));
     redoStack = [];
   }
 
@@ -1495,30 +2340,31 @@ ctx.putImageData(imageData,0,0);
 
   function undo() {
     if (undoStack.length === 0) return;
-    redoStack.push(canvas.toDataURL());
+    redoStack.push(exportCanvasWithWhiteBackground("image/png"));
     const img = new Image();
     img.src = undoStack.pop();
-    img.onload = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(img, 0, 0); };
+    img.onload = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(img, 0, 0); paintWhiteBackdrop(); };
   }
 
   function redo() {
     if (redoStack.length === 0) return;
-    undoStack.push(canvas.toDataURL());
+    undoStack.push(exportCanvasWithWhiteBackground("image/png"));
     const img = new Image();
     img.src = redoStack.pop();
-    img.onload = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(img, 0, 0); };
+    img.onload = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(img, 0, 0); paintWhiteBackdrop(); };
   }
 
   // ── End round — capture canvas and go to results ──
   function endRound(reason) {
     if (timeUp) return; // guard against double-trigger
     clearInterval(timerInterval);
+    clearInterval(previewInterval);
     timeUp = true;
     stopWarningSfx();
     drawing = false;
     submitBtn.disabled = true;
 
-    const drawingData = canvas.toDataURL();
+    const drawingData = exportCanvasWithWhiteBackground("image/png");
     const drawDurationSeconds = Math.floor((Date.now() - drawStartedAt) / 1000);
 
     // Brief flash message, then transition to results
@@ -1526,6 +2372,7 @@ ctx.putImageData(imageData,0,0);
 
     setTimeout(() => {
       window.removeEventListener("resize", resizeCanvas);
+      window.removeEventListener("quark-online-preview-updated", renderPeerPreviews);
       analyzeDrawingWithAI(drawingData, promptData).then((aiReport) => {
         if (reason === "submit") {
           playCelebrationSfx();
@@ -1546,6 +2393,19 @@ ctx.putImageData(imageData,0,0);
           aiBreakdown: aiReport.breakdown,
           aiSummary: aiReport.explanation,
         });
+
+        if (onRoundFinished) {
+          onRoundFinished({
+            reason,
+            drawingData,
+            promptData,
+            round,
+            aiReport,
+            drawDurationSeconds,
+          });
+          return;
+        }
+
         show(resultsScreen(drawingData, round, promptData, aiReport));
       });
     }, 600);
@@ -1690,7 +2550,10 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
     class: "tool-btn",
     title: "Clear Canvas",
     onclick() {
-      if (confirm("Clear the entire canvas?")) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (confirm("Clear the entire canvas?")) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        paintWhiteBackdrop();
+      }
     }
   }, 
   el("img", {
@@ -1756,24 +2619,46 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
     class: "back-btn",
     onclick() {
       clearInterval(timerInterval);
+      clearInterval(previewInterval);
       stopWarningSfx();
       window.removeEventListener("resize", resizeCanvas);
-      show(mainMenu());
+      window.removeEventListener("quark-online-preview-updated", renderPeerPreviews);
+      if (typeof options.onExitRound === "function") {
+        options.onExitRound();
+      } else {
+        show(mainMenu());
+      }
     }
   }, "←");
+
+  const hostEndRoundBtn = isHostController
+    ? el("button", {
+        class: "host-end-round-btn",
+        title: "Host control: end this round for everyone",
+        onclick() {
+          if (!onForceEndRound) return;
+          if (!confirm("End this round for everyone now?")) return;
+          onForceEndRound();
+        },
+      }, "Host End Round")
+    : null;
 
   const screen = el("div", { class: "draw-screen" },
     sidebar,
     el("div", { class: "canvas-wrap" }, canvas),
+    peerPreviewPanel,
     timerBox,
     drawPrompt,
     el("div", { class: "round-badge draw-round-badge" }, `Round ${round}`),
     backBtn,
+    hostEndRoundBtn,
     submitBtn,
   );
 
   requestAnimationFrame(() => resizeCanvas());
+  renderPeerPreviews();
   window.addEventListener("resize", resizeCanvas);
+  window.addEventListener("quark-online-preview-updated", renderPeerPreviews);
 
   const timerInterval = setInterval(() => {
     timeLeft--;
@@ -1790,6 +2675,10 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
       endRound("timeout");
     }
   }, 1000);
+
+  const previewInterval = setInterval(() => {
+    sendPreviewSnapshot();
+  }, 1200);
 
   return screen;
 }
@@ -1826,11 +2715,11 @@ if (musicEnabled) {
     }));
   }
 
-  return el("div", { class: "screen" },
+  const screen = el("div", { class: "screen" },
     el("img", { class: "logo-img", src: "quarksketch_logo.png", alt: "QuarkSketch" }),
     el("div", { class: "btn-group" },
       el("button", { class: "btn-play",     onclick() { startRound(1); } }, "Single Player"),
-      el("button", { class: "btn-multi",    onclick() { /* TODO: multiplayer lobby */ } }, "Multiplayer"),
+      el("button", { class: "btn-multi",    onclick() { show(onlineMultiplayerScreen()); } }, "Multiplayer"),
       el("button", { class: "btn-history",  onclick() { show(historyScreen()); } }, "History"),
       el("button", { class: "btn-settings", onclick: toggleSettings }, "Settings"),
     ),
@@ -1838,6 +2727,7 @@ if (musicEnabled) {
   );
 
   addUiClickSfxToButtons(screen);
+  return screen;
 }
 
 // kick everything off

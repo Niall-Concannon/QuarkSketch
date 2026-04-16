@@ -8,6 +8,26 @@ The objective of QuarkSketch is for players to participate in a sequence of draw
 
 ## Features
 
+- Single-player drawing rounds with AI scoring and local history
+- Online host/guest room multiplayer for browser clients
+
+## Online Multiplayer Setup
+
+1. Install dependencies in the repository root:
+	`npm install`
+2. Start the local web + WebSocket server:
+	`npm start`
+3. Open two browser windows at `http://localhost:8080`
+4. In one window, click Multiplayer -> Create Room
+5. In the second window, click Multiplayer -> Join Room and enter the code
+6. Host starts the round when both players are in the lobby
+
+### Notes
+
+- Default room size is currently 2 players (host + one guest flow).
+- If you deploy to another host, keep the browser and WebSocket endpoint on the same origin where possible.
+- You can still play single-player mode exactly as before.
+
 
 ## Technologies Used
 ### Core Technologies

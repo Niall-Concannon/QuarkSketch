@@ -353,7 +353,7 @@ function handleOnlineMessage(message) {
     onlineState.peerPreviews.clear();
     onlineState.submissionStatus = { submittedCount: 0, totalPlayers: payload.room?.players?.length || 2 };
     show(countdownTimer(() => {
-      show(drawingScreen(payload.round, payload.promptData, {
+      show(promptScreen(payload.promptData, () => show(drawingScreen(payload.round, payload.promptData, {
         roundDuration: payload.duration,
         onRoundFinished: onOnlineRoundFinished,
         enablePeerPreview: true,
@@ -369,6 +369,9 @@ function handleOnlineMessage(message) {
           onlineSend("leave_room");
           show(onlineMultiplayerScreen());
         },
+      })), {
+        autoStartDelayMs: 1400,
+        showStartButton: false,
       }));
     }, {
       allowLocalToggle: payload.room?.hostId === onlineState.playerId,
@@ -1174,14 +1177,35 @@ function historyScreen() {
   return screen;
 }
 
-function promptScreen(promptData, onStart) {
+function promptScreen(promptData, onStart, options = {}) {
+  const showStartButton = options.showStartButton !== false;
+  const autoStartDelayMs = Number(options.autoStartDelayMs) > 0 ? Number(options.autoStartDelayMs) : 0;
+  let started = false;
+  let autoStartTimer = null;
+
+  function startDrawing() {
+    if (started) return;
+    started = true;
+    if (autoStartTimer) {
+      clearTimeout(autoStartTimer);
+      autoStartTimer = null;
+    }
+    onStart();
+  }
+
   const screen = el("div", { class: "screen prompt-screen" },
     el("div", { class: "prompt-card" },
       el("h2", { class: "prompt-title" }, "Draw This Round!"),
       el("p", { class: "prompt-full" }, promptData.text),
-      el("button", { class: "btn-play prompt-start-btn", onclick: onStart }, "Start Drawing"),
+      showStartButton
+        ? el("button", { class: "btn-play prompt-start-btn", onclick: startDrawing }, "Start Drawing")
+        : null,
     ),
   );
+
+  if (autoStartDelayMs) {
+    autoStartTimer = setTimeout(startDrawing, autoStartDelayMs);
+  }
 
   addUiClickSfxToButtons(screen);
   return screen;

@@ -1889,3 +1889,40 @@ body.dark .online-reaction-btn.active {
     width: calc(100vw - 220px);
   }
 }
+
+.online-topic-section {
+  width: 100%;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.online-topic-select {
+  width: 100%;
+  border: 2px solid #000;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 1rem;
+  font-weight: 700;
+  background: #fff;
+  color: #111;
+  box-sizing: border-box;
+}
+
+.online-topic-help {
+  margin: 0;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.online-topic-badge {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  font-weight: 700;
+  display: inline-flex;
+  width: fit-content;
+}

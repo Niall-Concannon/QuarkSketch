@@ -1,6 +1,6 @@
 // @jest-environment jsdom
 
-const {el, show, mainMenu, settingsPanel, formatDateTime, formatDuration, resultsScreen, loadHistoryEntries, saveHistoryEntry, clearHistoryEntries} = require('../src/game');
+const {el, show, mainMenu, settingsPanel, formatDateTime, formatDuration, resultsScreen, loadHistoryEntries, saveHistoryEntry, clearHistoryEntries, countdownTimer} = require('../src/game');
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -254,3 +254,30 @@ describe("clearHistoryEntries()", () => {
     expect(loadHistoryEntries()).toEqual([])
   });
 });
+  
+
+  describe("countdownTImer()", () => {
+    test("renders the countdown screen", () => {
+    expect(countdownTimer(() => {}).className).toContain("countdown-screen");
+  });
+
+
+
+  test("Does not call ondone after the full sequence",  () => {
+    const onDone = jest.fn();
+    countdownTimer(onDone);
+    jest.advanceTimersByTime(3000);
+    expect(onDone).not.toHaveBeenCalled();
+  });
+  
+  test("Tapping the screen causes a pause state", () => {
+    const s = countdownTimer(() => {});
+    show(s);
+    const screen = document.querySelector(".countdown-screen");
+    screen.click(); //pause
+    jest.advanceTimersByTime(500);
+    expect(screen.querySelector(".countdown-number").textContent).toBe("3");
+    screen.click(); //resume
+
+  });
+  });

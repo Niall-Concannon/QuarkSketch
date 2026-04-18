@@ -122,6 +122,7 @@ const onlineState = {
   peerPreviews: new Map(),
   roundReactions: {},
   lastResults: null,
+  chatHistory: [],
 };
 
 function getStoredTheme() {
@@ -433,6 +434,15 @@ function handleOnlineMessage(message) {
       show(onlineResultsScreen(onlineState.lastResults));
     }
   }
+
+    if (type === "chat_broadcast") {
+  onlineState.chatHistory.push(payload);
+  // Keep only the last 50 messages to save memory
+  if (onlineState.chatHistory.length > 50) onlineState.chatHistory.shift();
+  
+  window.dispatchEvent(new CustomEvent("quark-chat-updated"));
+  return;
+}
 }
 
 function connectOnline(serverUrl) {
@@ -764,6 +774,7 @@ function onlineLobbyScreen() {
         copyInviteBtn,
       ),
       topicSection,
+      chatComponent(),
       onlineState.lastError ? el("p", { class: "online-error" }, onlineState.lastError) : null,
       el("ul", { class: "online-player-list" }, ...playerRows),
       el("div", { class: "btn-group online-actions" },
@@ -2767,6 +2778,49 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
   }, 1200);
 
   return screen;
+}
+
+
+// ─────────────────────────────────────────────────────────────────
+// CHAT
+// ─────────────────────────────────────────────────────────────────
+function chatComponent() {
+  const history = el("div", { class: "chat-history" });
+  const input = el("input", { type: "text", placeholder: "Type to chat...", class: "chat-input" });
+
+  const send = () => {
+    const text = input.value.trim();
+    if (text) {
+      onlineSend("chat_message", { text });
+      input.value = "";
+    }
+  };
+
+  input.onkeydown = (e) => { if (e.key === "Enter") send(); };
+
+  window.addEventListener("quark-chat-updated", () => {
+    history.innerHTML = "";
+    onlineState.chatHistory.forEach(msg => {
+      const isMe = msg.senderName === onlineState.displayName;
+      
+      // displays "You" instead of nickname if the message is sent by you
+      const nameToDisplay = isMe ? "You" : msg.senderName;
+
+      history.appendChild(el("div", { class: `chat-line ${isMe ? 'is-me' : ''}` },
+        el("b", {}, `${nameToDisplay}: `),
+        el("span", {}, msg.text)
+      ));
+    });
+    history.scrollTop = history.scrollHeight;
+  });
+
+  // Refresh history immediately on load
+  setTimeout(() => window.dispatchEvent(new CustomEvent("quark-chat-updated")), 0);
+
+  return el("div", { class: "chat-container" },
+    history,
+    el("div", { class: "chat-input-row" }, input, el("button", { onclick: send }, "Send"))
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────

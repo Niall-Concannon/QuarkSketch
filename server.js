@@ -268,6 +268,28 @@ wss.on("connection", (ws) => {
   return;
 }
 
+    /* --- ADD CHAT MESSAGE HANDLING --- */
+if (type === "chat_message") {
+  const room = rooms.get(client.roomCode);
+  if (!room) return;
+
+  const chatPayload = {
+    type: "chat_broadcast",
+    payload: {
+      senderName: client.name,
+      text: payload.text,
+      senderId: client.id,
+      timestamp: Date.now()
+    }
+  };
+
+  // Send to every player in the room
+  for (const player of room.players.values()) {
+    safeSend(player.ws, chatPayload);
+  }
+  return;
+}
+
     if (type === "leave_room") {
       removeFromCurrentRoom(client);
       safeSend(ws, { type: "left_room" });

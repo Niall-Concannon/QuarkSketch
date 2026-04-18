@@ -268,7 +268,6 @@ wss.on("connection", (ws) => {
   return;
 }
 
-    /* --- ADD CHAT MESSAGE HANDLING --- */
 if (type === "chat_message") {
   const room = rooms.get(client.roomCode);
   if (!room) return;

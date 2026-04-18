@@ -933,7 +933,15 @@ function el(tag, attrs, ...children) {
 // ─────────────────────────────────────────────────────────────────
 // SHOW — clears the page and mounts a new screen
 // ─────────────────────────────────────────────────────────────────
+let currentMountedScreen = null;
+
 function show(screen) {
+if (currentMountedScreen && typeof currentMountedScreen.__cleanup === "function") {
+  currentMountedScreen.__cleanup();
+}
+
+currentMountedScreen = screen || null;
+
   document.body.innerHTML = "";
   const requiresLandscape = Boolean(
     screen && (
@@ -1118,6 +1126,12 @@ function countdownTimer(onDone, options = {}) {
     cleanup();
     originalOnDone();
   };
+
+  screen.__cleanup = () => {
+    if (countdownLoop) clearInterval(countdownLoop);
+    stopCountdownSfx();
+    window.removeEventListener("quark-online-countdown-pause", syncPauseHandler);
+  }
 
   return screen;
 }
@@ -2776,6 +2790,20 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
   const previewInterval = setInterval(() => {
     sendPreviewSnapshot();
   }, 1200);
+
+  function cleanupDrawingScreen() {
+    clearInterval(timerInterval);
+    clearInterval(previewInterval);
+
+    stopWarningSfx && stopWarningSfx();
+
+    drawing = false;
+
+    window.removeEventListener("resize", resizeCanvas);
+    window.removeEventListener("quark-online-preview-updated", renderPeerPreviews);
+  }
+
+  screen.__cleanup = cleanupDrawingScreen;
 
   return screen;
 }

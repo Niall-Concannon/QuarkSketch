@@ -111,6 +111,8 @@ const onlineState = {
   role: null,
   serverUrl: "",
   displayName: "",
+  selectedTopicKey: "any",
+  pendingLobbySettings: null,
   lastError: "",
   submissionStatus: {
     submittedCount: 0,
@@ -120,6 +122,7 @@ const onlineState = {
   peerPreviews: new Map(),
   roundReactions: {},
   lastResults: null,
+  chatHistory: [],
 };
 
 function getStoredTheme() {
@@ -335,6 +338,7 @@ function handleOnlineMessage(message) {
         onlineState.role = payload.room.hostId === onlineState.playerId ? "host" : "guest";
       }
       onlineState.lastError = "";
+      onlineState.selectedTopicKey = onlineState.room.selectedTopic || "any";
       if (!onlineState.room.hasActiveRound) {
         onlineState.startRoundPending = false;
       }
@@ -353,7 +357,7 @@ function handleOnlineMessage(message) {
     onlineState.peerPreviews.clear();
     onlineState.submissionStatus = { submittedCount: 0, totalPlayers: payload.room?.players?.length || 2 };
     show(countdownTimer(() => {
-      show(drawingScreen(payload.round, payload.promptData, {
+      show(promptScreen(payload.promptData, () => show(drawingScreen(payload.round, payload.promptData, {
         roundDuration: payload.duration,
         onRoundFinished: onOnlineRoundFinished,
         enablePeerPreview: true,
@@ -369,6 +373,9 @@ function handleOnlineMessage(message) {
           onlineSend("leave_room");
           show(onlineMultiplayerScreen());
         },
+      })), {
+        autoStartDelayMs: 1400,
+        showStartButton: false,
       }));
     }, {
       allowLocalToggle: payload.room?.hostId === onlineState.playerId,
@@ -427,6 +434,15 @@ function handleOnlineMessage(message) {
       show(onlineResultsScreen(onlineState.lastResults));
     }
   }
+
+    if (type === "chat_broadcast") {
+  onlineState.chatHistory.push(payload);
+  // Keep only the last 50 messages to save memory
+  if (onlineState.chatHistory.length > 50) onlineState.chatHistory.shift();
+  
+  window.dispatchEvent(new CustomEvent("quark-chat-updated"));
+  return;
+}
 }
 
 function connectOnline(serverUrl) {
@@ -528,6 +544,9 @@ function onlineMultiplayerScreen() {
     onclick() {
       setBusy("Connecting and creating room...");
       onlineState.role = "host";
+      onlineState.pendingLobbySettings = {
+        selectedTopicKey: "any",
+      };
       connectOnline(connectUrl)
         .then(() => {
           onlineSend("create_room", { name: getName() });
@@ -548,6 +567,7 @@ function onlineMultiplayerScreen() {
       }
       setBusy("Connecting and joining room...");
       onlineState.role = "guest";
+      onlineState.pendingLobbySettings = null;
       connectOnline(connectUrl)
         .then(() => {
           onlineSend("join_room", { code: roomCode, name: getName() });
@@ -652,6 +672,45 @@ function onlineLobbyScreen() {
     ),
   );
 
+  const topicOptions = window.PROMPTS && typeof window.PROMPTS.getPromptTopicOptions === "function"
+    ? window.PROMPTS.getPromptTopicOptions()
+    : [{ key: "any", label: "Any Topic" }];
+
+  const selectedTopicKey = onlineState.room.selectedTopic || onlineState.selectedTopicKey || "any";
+  const selectedTopicLabel = topicOptions.find((option) => option.key === selectedTopicKey)?.label || "Any Topic";
+
+  const topicSelect = amHost
+    ? el("select", {
+        class: "online-topic-select",
+        onchange(event) {
+          const nextTopic = event.target.value || "any";
+          onlineState.selectedTopicKey = nextTopic;
+          onlineSend("set_topic", { topicKey: nextTopic });
+        },
+      },
+        ...topicOptions.map((option) =>
+          el("option", {
+            value: option.key,
+          }, option.label),
+        ),
+      )
+    : null;
+
+    if (topicSelect) {
+  topicSelect.value = selectedTopicKey;
+}
+
+  const topicSection = amHost
+    ? el("div", { class: "online-topic-section" },
+        el("label", { class: "online-label" }, "Lobby Topic"),
+        topicSelect,
+        el("p", { class: "online-topic-help" }, "Host chooses a topic for the room before starting."),
+      )
+    : el("div", { class: "online-topic-section" },
+        el("p", { class: "online-label" }, "Lobby Topic"),
+        el("p", { class: "online-topic-badge" }, selectedTopicLabel),
+      );
+
   const startBtn = amHost
     ? el("button", {
         class: "btn-play",
@@ -672,8 +731,9 @@ function onlineLobbyScreen() {
             return;
           }
 
-          const promptData = getRoundPrompt();
-          const sent = onlineSend("start_round", { promptData, duration: 30 });
+          const chosenTopic = onlineState.room.selectedTopic || onlineState.selectedTopicKey || "any";
+          const promptData = getRoundPrompt(chosenTopic);
+          const sent = onlineSend("start_round", { promptData, duration: 30, topicKey: chosenTopic });
           if (!sent) {
             onlineState.lastError = "Could not send start request. Rejoin the room and try again.";
             show(onlineLobbyScreen());
@@ -713,6 +773,8 @@ function onlineLobbyScreen() {
         invitePreview,
         copyInviteBtn,
       ),
+      topicSection,
+      chatComponent(),
       onlineState.lastError ? el("p", { class: "online-error" }, onlineState.lastError) : null,
       el("ul", { class: "online-player-list" }, ...playerRows),
       el("div", { class: "btn-group online-actions" },
@@ -805,8 +867,9 @@ function onlineResultsScreen(resultPayload) {
         class: "btn-play",
         onclick() {
           onlineState.lastError = "";
-          const promptData = getRoundPrompt();
-          onlineSend("start_round", { promptData, duration: 30 });
+          const chosenTopic = onlineState.room?.selectedTopic || onlineState.selectedTopicKey || "any";
+          const promptData = getRoundPrompt(chosenTopic); // generate prompt based on selected topic 
+          onlineSend("start_round", { promptData, duration: 30, topicKey: chosenTopic });
         },
       }, "Next Round")
     : null;
@@ -841,12 +904,25 @@ function onlineResultsScreen(resultPayload) {
 // HELPER — builds a DOM element with attributes and children
 // ─────────────────────────────────────────────────────────────────
 function el(tag, attrs, ...children) {
-  const node = document.createElement(tag);
+ const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
-    if (k === "class") node.className = v;
-    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
-    else node.setAttribute(k, v);
+    if (v === null || v === undefined || v === false) continue;
+
+    if (k === "class") {
+      node.className = v;
+    } else if (k.startsWith("on")) {
+      node.addEventListener(k.slice(2), v);
+    } else if (k === "value") {
+      node.value = v;
+    } else if (k === "checked") {
+      node.checked = Boolean(v);
+    } else if (k === "selected") {
+      node.selected = Boolean(v);
+    } else {
+      node.setAttribute(k, v);
+    }
   }
+
   for (const child of children) {
     if (typeof child === "string") node.appendChild(document.createTextNode(child));
     else if (child) node.appendChild(child);
@@ -857,7 +933,15 @@ function el(tag, attrs, ...children) {
 // ─────────────────────────────────────────────────────────────────
 // SHOW — clears the page and mounts a new screen
 // ─────────────────────────────────────────────────────────────────
+let currentMountedScreen = null;
+
 function show(screen) {
+if (currentMountedScreen && typeof currentMountedScreen.__cleanup === "function") {
+  currentMountedScreen.__cleanup();
+}
+
+currentMountedScreen = screen || null;
+
   document.body.innerHTML = "";
   const requiresLandscape = Boolean(
     screen && (
@@ -1043,15 +1127,21 @@ function countdownTimer(onDone, options = {}) {
     originalOnDone();
   };
 
+  screen.__cleanup = () => {
+    if (countdownLoop) clearInterval(countdownLoop);
+    stopCountdownSfx();
+    window.removeEventListener("quark-online-countdown-pause", syncPauseHandler);
+  }
+
   return screen;
 }
 
 // ─────────────────────────────────────────────────────────────────
 // ROUND PROMPTS — two-part randomized drawing prompt
 // ─────────────────────────────────────────────────────────────────
-function getRoundPrompt() {
+function getRoundPrompt(topicKey = "any") {
   if (window.PROMPTS && typeof window.PROMPTS.getRandomPrompt === "function") {
-    return window.PROMPTS.getRandomPrompt();
+    return window.PROMPTS.getRandomPrompt(topicKey);
   }
 
   // Fallback in case prompt file is unavailable.
@@ -1174,14 +1264,35 @@ function historyScreen() {
   return screen;
 }
 
-function promptScreen(promptData, onStart) {
+function promptScreen(promptData, onStart, options = {}) {
+  const showStartButton = options.showStartButton !== false;
+  const autoStartDelayMs = Number(options.autoStartDelayMs) > 0 ? Number(options.autoStartDelayMs) : 0;
+  let started = false;
+  let autoStartTimer = null;
+
+  function startDrawing() {
+    if (started) return;
+    started = true;
+    if (autoStartTimer) {
+      clearTimeout(autoStartTimer);
+      autoStartTimer = null;
+    }
+    onStart();
+  }
+
   const screen = el("div", { class: "screen prompt-screen" },
     el("div", { class: "prompt-card" },
       el("h2", { class: "prompt-title" }, "Draw This Round!"),
       el("p", { class: "prompt-full" }, promptData.text),
-      el("button", { class: "btn-play prompt-start-btn", onclick: onStart }, "Start Drawing"),
+      showStartButton
+        ? el("button", { class: "btn-play prompt-start-btn", onclick: startDrawing }, "Start Drawing")
+        : null,
     ),
   );
+
+  if (autoStartDelayMs) {
+    autoStartTimer = setTimeout(startDrawing, autoStartDelayMs);
+  }
 
   addUiClickSfxToButtons(screen);
   return screen;
@@ -2680,7 +2791,64 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
     sendPreviewSnapshot();
   }, 1200);
 
+  function cleanupDrawingScreen() {
+    clearInterval(timerInterval);
+    clearInterval(previewInterval);
+
+    stopWarningSfx && stopWarningSfx();
+
+    drawing = false;
+
+    window.removeEventListener("resize", resizeCanvas);
+    window.removeEventListener("quark-online-preview-updated", renderPeerPreviews);
+  }
+
+  screen.__cleanup = cleanupDrawingScreen;
+
   return screen;
+}
+
+
+// ─────────────────────────────────────────────────────────────────
+// CHAT
+// ─────────────────────────────────────────────────────────────────
+function chatComponent() {
+  const history = el("div", { class: "chat-history" });
+  const input = el("input", { type: "text", placeholder: "Type to chat...", class: "chat-input" });
+
+  const send = () => {
+    const text = input.value.trim();
+    if (text) {
+      onlineSend("chat_message", { text });
+      input.value = "";
+    }
+  };
+
+  input.onkeydown = (e) => { if (e.key === "Enter") send(); };
+
+  window.addEventListener("quark-chat-updated", () => {
+    history.innerHTML = "";
+    onlineState.chatHistory.forEach(msg => {
+      const isMe = msg.senderName === onlineState.displayName;
+      
+      // displays "You" instead of nickname if the message is sent by you
+      const nameToDisplay = isMe ? "You" : msg.senderName;
+
+      history.appendChild(el("div", { class: `chat-line ${isMe ? 'is-me' : ''}` },
+        el("b", {}, `${nameToDisplay}: `),
+        el("span", {}, msg.text)
+      ));
+    });
+    history.scrollTop = history.scrollHeight;
+  });
+
+  // Refresh history immediately on load
+  setTimeout(() => window.dispatchEvent(new CustomEvent("quark-chat-updated")), 0);
+
+  return el("div", { class: "chat-container" },
+    history,
+    el("div", { class: "chat-input-row" }, input, el("button", { onclick: send }, "Send"))
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -2691,18 +2859,24 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
 function mainMenu() {
   let settingsOpen = false;
   const settingsSlot = el("div", {});
-if (bgmTrack) {
-  bgmTrack.pause();
-  bgmTrack.currentTime = 0;
+    if (bgmTrack) {
+    bgmTrack.pause();
+    bgmTrack.currentTime = 0;
+    bgmTrack = null;
 }
-bgmTrack = new Audio();
-bgmTrack.src = './audio/track1.mp3';
-bgmTrack.volume = 0.2;
-bgmTrack.loop = true;
 
-// only play if music is enabled
-if (musicEnabled) {
-  document.addEventListener("click", () => bgmTrack.play(), { once: true });
+  bgmTrack = new Audio();
+  bgmTrack.src = './audio/track1.mp3';
+  bgmTrack.volume = 0.2;
+  bgmTrack.loop = true;
+
+// only auto-play if music is enabled
+  if (musicEnabled) {
+    bgmTrack.play().catch(() => {
+    document.addEventListener("click", () => {
+      if (musicEnabled && bgmTrack) bgmTrack.play().catch(() => {});
+    }, { once: true });
+  });
 }
 
 

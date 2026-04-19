@@ -51,6 +51,7 @@ function serializeRoom(room) {
     hostId: room.hostId,
     round: room.round,
     hasActiveRound: Boolean(room.activeRound),
+    selectedTopic: room.selectedTopic || "any", // show selected topic by host on guest's side
     players: Array.from(room.players.values()).map((p) => ({
       id: p.id,
       name: p.name,
@@ -210,6 +211,7 @@ wss.on("connection", (ws) => {
         round: 0,
         players: new Map(),
         activeRound: null,
+        selectedTopic: "any",
       };
       room.players.set(client.id, { id: client.id, name: client.name, ws });
       client.roomCode = code;
@@ -237,6 +239,55 @@ wss.on("connection", (ws) => {
       broadcastRoom(room);
       return;
     }
+
+    // Allow host to change topic before round starts
+  if (type === "set_topic") {
+    if (!client.roomCode) {
+      safeSend(ws, { type: "error", payload: { message: "Join a room first." } });
+      return;
+  }
+
+    const room = rooms.get(client.roomCode);
+    if (!room) {
+      safeSend(ws, { type: "error", payload: { message: "Room not found." } });
+      return;
+  }
+
+    if (room.hostId !== client.id) {
+      safeSend(ws, { type: "error", payload: { message: "Only the host can change the topic." } });
+      return;
+  }
+
+    if (room.activeRound) {
+      safeSend(ws, { type: "error", payload: { message: "Cannot change topic during an active round." } });
+      return;
+  }
+
+  room.selectedTopic = String(payload.topicKey || "any").trim() || "any";
+  broadcastRoom(room);
+  return;
+}
+
+if (type === "chat_message") {
+  const room = rooms.get(client.roomCode);
+  if (!room) return;
+
+  const chatPayload = {
+    type: "chat_broadcast",
+    payload: {
+      senderName: client.name,
+      text: payload.text,
+      senderId: client.id,
+      timestamp: Date.now()
+    }
+  };
+
+  // Send to every player in the room
+  for (const player of room.players.values()) {
+    safeSend(player.ws, chatPayload);
+  }
+  return;
+}
 
     if (type === "leave_room") {
       removeFromCurrentRoom(client);

@@ -2890,7 +2890,7 @@ function mainMenu() {
   }
 
   const screen = el("div", { class: "screen" },
-    el("img", { class: "logo-img", src: "quarksketch_logo.png", alt: "QuarkSketch" }),
+    el("img", { class: "logo-img", src: "quarksketch_logo2.png", alt: "QuarkSketch" }),
     el("div", { class: "btn-group" },
       el("button", { class: "btn-play",     onclick() { startRound(1); } }, "Single Player"),
       el("button", { class: "btn-multi",    onclick() { show(onlineMultiplayerScreen()); } }, "Multiplayer"),

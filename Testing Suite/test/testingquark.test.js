@@ -278,6 +278,5 @@ describe("clearHistoryEntries()", () => {
     jest.advanceTimersByTime(500);
     expect(screen.querySelector(".countdown-number").textContent).toBe("3");
     screen.click(); //resume
-
   });
   });

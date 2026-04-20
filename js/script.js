@@ -102,6 +102,7 @@ primeUiClickSfx();
 const ONLINE_SERVER_STORAGE_KEY = "quarkSketchOnlineServer";
 const ONLINE_NAME_STORAGE_KEY = "quarkSketchOnlineName";
 const THEME_STORAGE_KEY = "quarkSketchTheme";
+const MATCH_TOTAL_ROUNDS = 3;
 
 const onlineState = {
   ws: null,
@@ -122,8 +123,155 @@ const onlineState = {
   peerPreviews: new Map(),
   roundReactions: {},
   lastResults: null,
+  lastGameSummary: null,
   chatHistory: [],
+  selectedModeKey: "hard",
+  selectedModeDuration: 30,
+  gameRound: 0,
+  gameTotalRounds: MATCH_TOTAL_ROUNDS,
+  gameInProgress: false,
 };
+
+const GAME_MODES = Object.freeze([
+  {
+    key: "easy",
+    label: "Easy",
+    durationSeconds: 90,
+    description: "1m 30s to draw.",
+  },
+  {
+    key: "medium",
+    label: "Medium",
+    durationSeconds: 60,
+    description: "60s to draw.",
+  },
+  {
+    key: "hard",
+    label: "Hard",
+    durationSeconds: 30,
+    description: "30s to draw.",
+  },
+  {
+    key: "hardcore",
+    label: "Hardcore",
+    durationSeconds: 15,
+    description: "15s only.",
+  },
+  {
+    key: "finish_sketch",
+    label: "Finish the Sketch",
+    durationSeconds: 60,
+    description: "Round 1 gives unique prompts; later rounds continue someone else's last sketch.",
+  },
+]);
+
+const localRoundState = {
+  modeKey: "hard",
+  durationSeconds: 30,
+  topicKey: "any",
+  finishCarryover: null,
+  totalRounds: MATCH_TOTAL_ROUNDS,
+  roundSummaries: [],
+};
+
+function resetLocalMatchState() {
+  localRoundState.finishCarryover = null;
+  localRoundState.roundSummaries = [];
+}
+
+function getGameModeConfig(modeKey) {
+  return GAME_MODES.find((mode) => mode.key === modeKey) || GAME_MODES.find((mode) => mode.key === "hard");
+}
+
+function formatSecondsLabel(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const minutes = Math.floor(total / 60);
+  const remainder = total % 60;
+  if (minutes <= 0) return `${remainder}s`;
+  if (remainder <= 0) return `${minutes}m`;
+  return `${minutes}m ${remainder}s`;
+}
+
+function withPromptArticle(noun) {
+  const cleanNoun = String(noun || "subject").trim() || "subject";
+  const firstWord = cleanNoun.split(/\s+/)[0].toLowerCase();
+
+  if (/^(honest|hour|heir|honor)/.test(firstWord)) return `an ${cleanNoun}`;
+  if (/^(uni([^nmd]|$)|use|user|ufo|euro)/.test(firstWord)) return `a ${cleanNoun}`;
+  if (/^[aeiou]/.test(firstWord)) return `an ${cleanNoun}`;
+  return `a ${cleanNoun}`;
+}
+
+function createPromptFromParts(subject, action) {
+  const safeSubject = String(subject || "subject").trim() || "subject";
+  const safeAction = String(action || "doing something").trim().replace(/\s+/g, " ") || "doing something";
+  return {
+    subject: safeSubject,
+    action: safeAction,
+    text: `Draw ${withPromptArticle(safeSubject)} ${safeAction}`,
+  };
+}
+
+function buildUniquePromptEntries(playerIds, topicKey = "any") {
+  const entries = {};
+  const usedPromptText = new Set();
+
+  const players = Array.isArray(playerIds) ? playerIds : [];
+  if (!players.length) return entries;
+
+  // Primary path: keep pulling topic-aware prompts until every player has a unique one.
+  const maxAttempts = Math.max(600, players.length * 140);
+  let attempts = 0;
+  let assignedCount = 0;
+  while (assignedCount < players.length && attempts < maxAttempts) {
+    const prompt = getRoundPrompt(topicKey);
+    attempts++;
+    if (!prompt || usedPromptText.has(prompt.text)) continue;
+    entries[players[assignedCount]] = prompt;
+    usedPromptText.add(prompt.text);
+    assignedCount++;
+  }
+
+  // Deterministic fallback: build unique prompts from subject/action pools if randomness collides too much.
+  if (assignedCount < players.length) {
+    const fallbackSubjects = Array.isArray(window.PROMPTS?.subjects) && window.PROMPTS.subjects.length
+      ? window.PROMPTS.subjects
+      : ["robot", "astronaut", "dragon", "pirate", "wizard"];
+    const fallbackActions = Array.isArray(window.PROMPTS?.actions) && window.PROMPTS.actions.length
+      ? window.PROMPTS.actions
+      : ["dancing in the rain", "building a rocket", "juggling oranges", "surfing a tidal wave", "painting a mural"];
+
+    let subjectIndex = Math.floor(Math.random() * fallbackSubjects.length);
+    let actionIndex = Math.floor(Math.random() * fallbackActions.length);
+    const maxCombinations = fallbackSubjects.length * fallbackActions.length;
+    let scanned = 0;
+
+    while (assignedCount < players.length && scanned < maxCombinations) {
+      const subject = fallbackSubjects[subjectIndex % fallbackSubjects.length];
+      const action = fallbackActions[actionIndex % fallbackActions.length];
+      const prompt = createPromptFromParts(subject, action);
+
+      if (!usedPromptText.has(prompt.text)) {
+        entries[players[assignedCount]] = prompt;
+        usedPromptText.add(prompt.text);
+        assignedCount++;
+      }
+
+      subjectIndex++;
+      actionIndex += 3;
+      scanned++;
+    }
+  }
+
+  // Final safety guard to ensure no player is left without a theme.
+  while (assignedCount < players.length) {
+    const forcedPrompt = createPromptFromParts(`theme ${assignedCount + 1}`, `challenge ${Date.now()}-${assignedCount + 1}`);
+    entries[players[assignedCount]] = forcedPrompt;
+    assignedCount++;
+  }
+
+  return entries;
+}
 
 function getStoredTheme() {
   const stored = localStorage.getItem(THEME_STORAGE_KEY);
@@ -263,6 +411,9 @@ function disconnectOnlineSocket() {
   onlineState.peerPreviews.clear();
   onlineState.roundReactions = {};
   onlineState.submissionStatus = { submittedCount: 0, totalPlayers: 0 };
+  onlineState.gameRound = 0;
+  onlineState.gameInProgress = false;
+  onlineState.lastGameSummary = null;
 }
 
 function onlineSend(type, payload = {}) {
@@ -339,6 +490,12 @@ function handleOnlineMessage(message) {
       }
       onlineState.lastError = "";
       onlineState.selectedTopicKey = onlineState.room.selectedTopic || "any";
+      onlineState.selectedModeKey = onlineState.room.selectedGameMode || onlineState.selectedModeKey || "hard";
+      onlineState.gameRound = Number(onlineState.room.gameRound) || 0;
+      onlineState.gameTotalRounds = Number(onlineState.room.gameTotalRounds) > 0
+        ? Number(onlineState.room.gameTotalRounds)
+        : MATCH_TOTAL_ROUNDS;
+      onlineState.gameInProgress = Boolean(onlineState.room.gameInProgress);
       if (!onlineState.room.hasActiveRound) {
         onlineState.startRoundPending = false;
       }
@@ -359,6 +516,9 @@ function handleOnlineMessage(message) {
     show(countdownTimer(() => {
       show(promptScreen(payload.promptData, () => show(drawingScreen(payload.round, payload.promptData, {
         roundDuration: payload.duration,
+        gameModeKey: payload.gameMode || "hard",
+        initialDrawingData: payload.baseDrawingData || "",
+        sourcePlayerName: payload.sourcePlayerName || "",
         onRoundFinished: onOnlineRoundFinished,
         enablePeerPreview: true,
         isHostController: payload.room?.hostId === onlineState.playerId,
@@ -405,6 +565,15 @@ function handleOnlineMessage(message) {
     return;
   }
 
+  if (type === "game_over") {
+    onlineState.lastGameSummary = payload;
+    onlineState.lastResults = null;
+    onlineState.gameInProgress = false;
+    onlineState.peerPreviews.clear();
+    show(onlineGameOverScreen(payload));
+    return;
+  }
+
   if (type === "countdown_pause") {
     window.dispatchEvent(new CustomEvent("quark-online-countdown-pause", {
       detail: { paused: Boolean(payload.paused) },
@@ -443,6 +612,105 @@ function handleOnlineMessage(message) {
   window.dispatchEvent(new CustomEvent("quark-chat-updated"));
   return;
 }
+
+if (type === "lobby_closed") {
+  onlineState.room = null;
+  onlineState.role = null;
+  onlineState.startRoundPending = false;
+  onlineState.gameRound = 0;
+  onlineState.gameInProgress = false;
+  onlineState.lastGameSummary = null;
+  onlineState.peerPreviews.clear();
+  show(onlineMultiplayerScreen());
+  return;
+}
+}
+
+function startOnlineGameWithMode(modeKey, durationSeconds) {
+  if (!onlineState.room) {
+    onlineState.lastError = "Room state missing. Rejoin and try again.";
+    show(onlineMultiplayerScreen());
+    return;
+  }
+
+  const chosenTopic = onlineState.room.selectedTopic || onlineState.selectedTopicKey || "any";
+  const modeConfig = getGameModeConfig(modeKey);
+  const duration = Number(durationSeconds) > 0 ? Number(durationSeconds) : modeConfig.durationSeconds;
+
+  const payload = {
+    duration,
+    gameMode: modeConfig.key,
+    topicKey: chosenTopic,
+    newGame: true,
+  };
+
+  if (modeConfig.key === "finish_sketch") {
+    const players = Array.isArray(onlineState.room.players) ? onlineState.room.players : [];
+    if (!onlineState.lastResults?.results?.length) {
+      payload.promptEntries = buildUniquePromptEntries(players.map((player) => player.id), chosenTopic);
+    }
+    payload.promptData = { text: "Finish The Sketch" };
+  } else {
+    payload.promptData = getRoundPrompt(chosenTopic);
+  }
+
+  const sent = onlineSend("start_round", payload);
+  if (!sent) {
+    onlineState.lastError = "Could not send start request. Rejoin the room and try again.";
+    show(onlineLobbyScreen());
+    return;
+  }
+
+  onlineState.selectedModeKey = modeConfig.key;
+  onlineState.selectedModeDuration = duration;
+  onlineState.startRoundPending = true;
+  onlineState.gameRound = 0;
+  onlineState.gameInProgress = true;
+  onlineState.lastGameSummary = null;
+  onlineState.lastError = "";
+  show(onlineLobbyScreen());
+}
+
+function startOnlineNextRound() {
+  if (!onlineState.room) {
+    onlineState.lastError = "Room state missing. Rejoin and try again.";
+    show(onlineMultiplayerScreen());
+    return;
+  }
+
+  if (!onlineState.connected) {
+    onlineState.lastError = "Connection lost. Rejoin the room and try again.";
+    show(onlineLobbyScreen());
+    return;
+  }
+
+  const chosenTopic = onlineState.room.selectedTopic || onlineState.selectedTopicKey || "any";
+  const modeConfig = getGameModeConfig(onlineState.selectedModeKey || onlineState.room.selectedGameMode || "hard");
+  const duration = Number(onlineState.selectedModeDuration) > 0
+    ? Number(onlineState.selectedModeDuration)
+    : modeConfig.durationSeconds;
+
+  const payload = {
+    continueGame: true,
+    topicKey: chosenTopic,
+  };
+
+  if (modeConfig.key === "finish_sketch") {
+    payload.promptData = { text: "Finish The Sketch" };
+  } else {
+    payload.promptData = getRoundPrompt(chosenTopic);
+  }
+
+  const sent = onlineSend("start_round", payload);
+  if (!sent) {
+    onlineState.lastError = "Could not start next round. Rejoin the room and try again.";
+    show(onlineLobbyScreen());
+    return;
+  }
+
+  onlineState.startRoundPending = true;
+  onlineState.lastError = "";
+  show(onlineLobbyScreen());
 }
 
 function connectOnline(serverUrl) {
@@ -731,20 +999,24 @@ function onlineLobbyScreen() {
             return;
           }
 
-          const chosenTopic = onlineState.room.selectedTopic || onlineState.selectedTopicKey || "any";
-          const promptData = getRoundPrompt(chosenTopic);
-          const sent = onlineSend("start_round", { promptData, duration: 30, topicKey: chosenTopic });
-          if (!sent) {
-            onlineState.lastError = "Could not send start request. Rejoin the room and try again.";
-            show(onlineLobbyScreen());
+          if (onlineState.gameInProgress) {
+            startOnlineNextRound();
             return;
           }
 
-          onlineState.startRoundPending = true;
-          onlineState.lastError = "";
-          show(onlineLobbyScreen());
+          show(gameModeSelectorScreen(({ modeKey, durationSeconds }) => {
+            startOnlineGameWithMode(modeKey, durationSeconds);
+          }, {
+            title: "Select Game Gamemode",
+            subtitle: "Pick once now. This mode lasts for all 3 rounds.",
+            initialModeKey: onlineState.selectedModeKey || "hard",
+            onBack() {
+              show(onlineLobbyScreen());
+            },
+            backLabel: "Cancel",
+          }));
         },
-      }, "Start Round")
+      }, onlineState.gameInProgress ? "Start Next Round" : "Start Game")
     : null;
 
   const leaveBtn = el("button", {
@@ -759,8 +1031,14 @@ function onlineLobbyScreen() {
   const waitingText = amHost
     ? (onlineState.startRoundPending
         ? "Starting round for everyone..."
-        : (onlineState.room.players.length < 2 ? "Waiting for at least one guest to join." : "Ready to start the round."))
-    : "Waiting for host to start the round.";
+        : (onlineState.room.players.length < 2
+            ? "Waiting for at least one guest to join."
+            : (onlineState.gameInProgress
+                ? `Game in progress: Round ${onlineState.gameRound + 1}/${onlineState.gameTotalRounds}.`
+                : "Ready to start a 3-round game.")))
+    : (onlineState.gameInProgress
+        ? `Waiting for host to start round ${onlineState.gameRound + 1}/${onlineState.gameTotalRounds}.`
+        : "Waiting for host to start the game.");
 
   const screen = el("div", { class: "screen online-lobby-screen" },
     el("div", { class: "online-card" },
@@ -867,9 +1145,7 @@ function onlineResultsScreen(resultPayload) {
         class: "btn-play",
         onclick() {
           onlineState.lastError = "";
-          const chosenTopic = onlineState.room?.selectedTopic || onlineState.selectedTopicKey || "any";
-          const promptData = getRoundPrompt(chosenTopic); // generate prompt based on selected topic 
-          onlineSend("start_round", { promptData, duration: 30, topicKey: chosenTopic });
+          startOnlineNextRound();
         },
       }, "Next Round")
     : null;
@@ -887,12 +1163,103 @@ function onlineResultsScreen(resultPayload) {
     el("div", { class: "online-card online-results-card" },
       onlineTopControls(),
       el("h2", { class: "online-title" }, `Round ${round} Results`),
+      el("p", { class: "online-status" }, `Game Progress: ${round}/${onlineState.gameTotalRounds}`),
       el("p", { class: "online-subtitle" }, promptText),
       el("div", { class: "online-results-grid" }, ...cards),
       el("div", { class: "btn-group online-actions" },
         nextBtn,
         leaveBtn,
       ),
+    ),
+  );
+
+  addUiClickSfxToButtons(screen);
+  return screen;
+}
+
+function onlineGameOverScreen(payload) {
+  const rounds = Array.isArray(payload?.rounds) ? payload.rounds : [];
+  const leaderboard = Array.isArray(payload?.leaderboard) ? payload.leaderboard : [];
+
+  const leaderboardItems = leaderboard.length
+    ? el("div", { class: "online-results-grid" },
+        ...leaderboard.map((entry, index) =>
+          el("article", { class: "online-result-card" },
+            el("p", { class: "online-placement" }, `#${index + 1}`),
+            el("p", { class: "online-player-name" }, entry.playerName || "Player"),
+            el("p", { class: "online-score" }, `${entry.averageOverall || 0}% Avg`),
+            el("p", { class: "online-status" }, `${entry.bestOverall || 0}% Best`),
+          ),
+        ),
+      )
+    : el("p", { class: "online-status" }, "No leaderboard available.");
+
+  const allDrawings = rounds.length
+    ? el("div", { class: "online-results-grid" },
+        ...rounds.flatMap((roundEntry) =>
+          (Array.isArray(roundEntry.results) ? roundEntry.results : []).map((entry) =>
+            el("article", { class: "online-result-card" },
+              el("p", { class: "online-placement" }, `Round ${roundEntry.round || "?"}`),
+              el("p", { class: "online-player-name" }, entry.playerName || "Player"),
+              el("p", { class: "online-status" }, entry.promptData?.text || roundEntry.promptData?.text || "Prompt unavailable"),
+              entry.drawingData
+                ? el("img", { class: "online-result-thumb", src: entry.drawingData, alt: `${entry.playerName || "Player"} drawing` })
+                : el("div", { class: "online-result-missing" }, "No drawing submitted"),
+              el("p", { class: "online-score" }, `${Number(entry?.aiScores?.overall || 0)}%`),
+            ),
+          ),
+        ),
+      )
+    : el("p", { class: "online-status" }, "No drawings found for this game.");
+
+  const hostControls = isOnlineHost()
+    ? el("div", { class: "btn-group online-actions" },
+        el("button", {
+          class: "btn-play",
+          onclick() {
+            show(gameModeSelectorScreen(({ modeKey, durationSeconds }) => {
+              startOnlineGameWithMode(modeKey, durationSeconds);
+            }, {
+              title: "Start New Game",
+              subtitle: "Choose a gamemode for the next 3-round game.",
+              initialModeKey: onlineState.selectedModeKey || "hard",
+              onBack() {
+                show(onlineGameOverScreen(payload));
+              },
+              backLabel: "Cancel",
+            }));
+          },
+        }, "Start New Game"),
+        el("button", {
+          class: "btn-settings",
+          onclick() {
+            onlineSend("close_lobby");
+            disconnectOnlineSocket();
+            show(mainMenu());
+          },
+        }, "Exit To Menu"),
+      )
+    : el("div", { class: "btn-group online-actions" },
+        el("button", {
+          class: "btn-settings",
+          onclick() {
+            onlineSend("leave_room");
+            disconnectOnlineSocket();
+            show(mainMenu());
+          },
+        }, "Exit"),
+      );
+
+  const screen = el("div", { class: "screen online-results-screen online-game-over-screen" },
+    el("div", { class: "online-card online-results-card" },
+      onlineTopControls(),
+      el("h2", { class: "online-title" }, "Game Over"),
+      el("p", { class: "online-subtitle" }, `3 rounds complete. Mode: ${getGameModeConfig(payload?.gameMode || onlineState.selectedModeKey).label}`),
+      el("h3", { class: "online-label" }, "AI Leaderboard"),
+      leaderboardItems,
+      el("h3", { class: "online-label" }, "All Drawings"),
+      allDrawings,
+      hostControls,
     ),
   );
 
@@ -1264,6 +1631,75 @@ function historyScreen() {
   return screen;
 }
 
+function gameModeSelectorScreen(onConfirm, options = {}) {
+  const title = options.title || "Select Game Mode";
+  const subtitle = options.subtitle || "Choose difficulty before the 3-2-1 countdown.";
+  const includeFinishSketch = options.includeFinishSketch !== false;
+  const visibleModes = includeFinishSketch
+    ? GAME_MODES
+    : GAME_MODES.filter((mode) => mode.key !== "finish_sketch");
+  const fallbackInitialMode = visibleModes[0]?.key || "hard";
+  const requestedInitialMode = getGameModeConfig(options.initialModeKey || "hard").key;
+  const initialMode = visibleModes.some((mode) => mode.key === requestedInitialMode)
+    ? requestedInitialMode
+    : fallbackInitialMode;
+  let selectedModeKey = initialMode;
+
+  const cards = visibleModes.map((mode) => {
+    const durationText = formatSecondsLabel(mode.durationSeconds);
+    const card = el("button", {
+      class: `mode-card ${mode.key === initialMode ? "active" : ""}`,
+      onclick() {
+        selectedModeKey = mode.key;
+        cards.forEach((entry) => entry.classList.remove("active"));
+        card.classList.add("active");
+      },
+    },
+      el("span", { class: "mode-card-title" }, mode.label),
+      el("span", { class: "mode-card-time" }, durationText),
+      el("span", { class: "mode-card-desc" }, mode.description),
+    );
+    return card;
+  });
+
+  const confirmBtn = el("button", {
+    class: "btn-play",
+    onclick() {
+      const selectedMode = getGameModeConfig(selectedModeKey);
+      onConfirm({
+        modeKey: selectedMode.key,
+        durationSeconds: selectedMode.durationSeconds,
+      });
+    },
+  }, "Start Game");
+
+  const backBtn = el("button", {
+    class: "btn-settings",
+    onclick() {
+      if (typeof options.onBack === "function") {
+        options.onBack();
+        return;
+      }
+      show(mainMenu());
+    },
+  }, options.backLabel || "Back");
+
+  const screen = el("div", { class: "screen mode-select-screen" },
+    el("div", { class: "mode-select-card" },
+      el("h2", { class: "mode-select-title" }, title),
+      el("p", { class: "mode-select-subtitle" }, subtitle),
+      el("div", { class: "mode-grid" }, ...cards),
+      el("div", { class: "btn-group mode-select-actions" },
+        confirmBtn,
+        backBtn,
+      ),
+    ),
+  );
+
+  addUiClickSfxToButtons(screen);
+  return screen;
+}
+
 function promptScreen(promptData, onStart, options = {}) {
   const showStartButton = options.showStartButton !== false;
   const autoStartDelayMs = Number(options.autoStartDelayMs) > 0 ? Number(options.autoStartDelayMs) : 0;
@@ -1298,11 +1734,126 @@ function promptScreen(promptData, onStart, options = {}) {
   return screen;
 }
 
-function startRound(round = 1) {
+function startRound(round = 1, options = {}) {
+  const modeConfig = getGameModeConfig(options.modeKey || localRoundState.modeKey);
+  const roundDuration = Number(options.roundDuration) > 0
+    ? Number(options.roundDuration)
+    : Number(localRoundState.durationSeconds) > 0
+      ? Number(localRoundState.durationSeconds)
+      : modeConfig.durationSeconds;
+
+  const topicKey = options.topicKey || localRoundState.topicKey || "any";
+  const carryover = modeConfig.key === "finish_sketch"
+    ? (options.finishCarryover || localRoundState.finishCarryover)
+    : null;
+
+  const promptData = options.promptData
+    || (modeConfig.key === "finish_sketch" && carryover?.promptData ? carryover.promptData : getRoundPrompt(topicKey));
+
+  localRoundState.modeKey = modeConfig.key;
+  localRoundState.durationSeconds = roundDuration;
+  localRoundState.topicKey = topicKey;
+  if (round <= 1 && !options.continueGame) {
+    resetLocalMatchState();
+  }
+
   show(countdownTimer(() => {
-    const promptData = getRoundPrompt();
-    show(promptScreen(promptData, () => show(drawingScreen(round, promptData))));
+    show(promptScreen(promptData, () => show(drawingScreen(round, promptData, {
+      roundDuration,
+      gameModeKey: modeConfig.key,
+      initialDrawingData: carryover?.drawingData || "",
+      sourcePlayerName: carryover?.sourcePlayerName || "",
+      onAfterRoundSaved(result) {
+        localRoundState.roundSummaries.push({
+          round: result.round,
+          promptData: result.promptData,
+          drawingData: result.drawingData,
+          aiScores: {
+            overall: result.aiReport.overall,
+            resemblance: result.aiReport.resemblance,
+            color: result.aiReport.color,
+            accuracy: result.aiReport.accuracy,
+          },
+        });
+
+        if (modeConfig.key !== "finish_sketch") {
+          localRoundState.finishCarryover = null;
+          return;
+        }
+
+        localRoundState.finishCarryover = {
+          drawingData: result.drawingData,
+          promptData: result.promptData,
+          sourcePlayerName: "Previous Round",
+        };
+      },
+    }))));
   }));
+}
+
+function localGameOverScreen() {
+  const rounds = Array.isArray(localRoundState.roundSummaries) ? localRoundState.roundSummaries : [];
+  const averageScore = rounds.length
+    ? Math.round(rounds.reduce((sum, entry) => sum + Number(entry?.aiScores?.overall || 0), 0) / rounds.length)
+    : 0;
+
+  const cards = rounds.length
+    ? rounds.map((entry) =>
+        el("article", { class: "online-result-card" },
+          el("p", { class: "online-placement" }, `Round ${entry.round}`),
+          el("p", { class: "online-status" }, entry.promptData?.text || "Prompt unavailable"),
+          entry.drawingData
+            ? el("img", { class: "online-result-thumb", src: entry.drawingData, alt: `Round ${entry.round} drawing` })
+            : el("div", { class: "online-result-missing" }, "No drawing submitted"),
+          el("p", { class: "online-score" }, `${entry.aiScores?.overall || 0}%`),
+          el("p", { class: "online-status" }, `R:${entry.aiScores?.resemblance || 0}% C:${entry.aiScores?.color || 0}% A:${entry.aiScores?.accuracy || 0}%`),
+        ),
+      )
+    : [el("p", { class: "online-status" }, "No rounds were completed.")];
+
+  const screen = el("div", { class: "screen local-game-over-screen" },
+    el("div", { class: "online-card online-results-card" },
+      el("h2", { class: "online-title" }, "Game Over"),
+      el("p", { class: "online-subtitle" }, `3 rounds complete. Average AI score: ${averageScore}%`),
+      el("div", { class: "online-results-grid" }, ...cards),
+      el("div", { class: "btn-group online-actions" },
+        el("button", {
+          class: "btn-play",
+          onclick() {
+            show(gameModeSelectorScreen(({ modeKey, durationSeconds }) => {
+              localRoundState.modeKey = modeKey;
+              localRoundState.durationSeconds = durationSeconds;
+              resetLocalMatchState();
+              startRound(1, {
+                modeKey,
+                roundDuration: durationSeconds,
+                topicKey: "any",
+              });
+            }, {
+              title: "Select Game Mode",
+              subtitle: "Choose mode for the next 3-round game.",
+              initialModeKey: localRoundState.modeKey || "hard",
+              includeFinishSketch: false,
+              onBack() {
+                show(localGameOverScreen());
+              },
+              backLabel: "Cancel",
+            }));
+          },
+        }, "Start New Game"),
+        el("button", {
+          class: "btn-settings",
+          onclick() {
+            resetLocalMatchState();
+            show(mainMenu());
+          },
+        }, "Exit"),
+      ),
+    ),
+  );
+
+  addUiClickSfxToButtons(screen);
+  return screen;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -2085,13 +2636,28 @@ function resultsScreen(drawingData, round, promptData, aiReport) {
   // Action buttons
   const exitBtn = el("button", {
     class: "btn-settings results-btn",
-    onclick() { show(mainMenu()); }
+    onclick() {
+      resetLocalMatchState();
+      show(mainMenu());
+    }
   }, "🏠 Exit");
 
+  const isFinalRound = round >= localRoundState.totalRounds;
   const nextBtn = el("button", {
     class: "btn-play results-btn",
-    onclick() { startRound(round + 1); }
-  }, "Next Round →");
+    onclick() {
+      if (isFinalRound) {
+        show(localGameOverScreen());
+        return;
+      }
+      startRound(round + 1, {
+        modeKey: localRoundState.modeKey,
+        roundDuration: localRoundState.durationSeconds,
+        topicKey: localRoundState.topicKey,
+        continueGame: true,
+      });
+    }
+  }, isFinalRound ? "Game Summary →" : "Next Round →");
 
   const screen = el("div", { class: "screen results-screen" },
     // Logo at the top
@@ -2144,9 +2710,17 @@ function drawingScreen(round = 1, promptData = getRoundPrompt(), options = {}) {
   const isHostController = Boolean(options.isHostController);
   const getPeerPreviews = typeof options.getPeerPreviews === "function" ? options.getPeerPreviews : () => [];
   const onPreviewData = typeof options.onPreviewData === "function" ? options.onPreviewData : null;
+  const onAfterRoundSaved = typeof options.onAfterRoundSaved === "function" ? options.onAfterRoundSaved : null;
+  const initialDrawingData = typeof options.initialDrawingData === "string" ? options.initialDrawingData : "";
+  const isFinishSketchMode = options.gameModeKey === "finish_sketch";
+  const sourcePlayerName = String(options.sourcePlayerName || "").trim();
+  let initialDrawingLoaded = false;
 
   const timerBox = el("div", { class: "game-timer" }, `Time Remaining: ${timeLeft}s`);
-  const drawPrompt = el("div", { class: "draw-prompt" }, promptData.text);
+  const drawPromptText = isFinishSketchMode && sourcePlayerName
+    ? `Finish ${sourcePlayerName}'s sketch: ${promptData.text}`
+    : promptData.text;
+  const drawPrompt = el("div", { class: "draw-prompt" }, drawPromptText);
 
   const peerPreviewTitle = el("p", { class: "peer-preview-title" }, "Other Players");
   const peerPreviewList = el("div", { class: "peer-preview-list" });
@@ -2256,6 +2830,20 @@ let shapeSnapshot = null;
       return exportCanvas.toDataURL(format, quality);
     }
     return exportCanvas.toDataURL(format);
+  }
+
+  function loadInitialDrawing() {
+    if (!initialDrawingData || initialDrawingLoaded || !ctx) return;
+    const image = new Image();
+    image.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      paintWhiteBackdrop();
+      initialDrawingLoaded = true;
+      undoStack = [exportCanvasWithWhiteBackground("image/png")];
+      redoStack = [];
+    };
+    image.src = initialDrawingData;
   }
 
   let drawing = false;
@@ -2504,6 +3092,17 @@ ctx.putImageData(imageData,0,0);
           aiBreakdown: aiReport.breakdown,
           aiSummary: aiReport.explanation,
         });
+
+        if (onAfterRoundSaved) {
+          onAfterRoundSaved({
+            reason,
+            drawingData,
+            promptData,
+            round,
+            aiReport,
+            drawDurationSeconds,
+          });
+        }
 
         if (onRoundFinished) {
           onRoundFinished({
@@ -2767,6 +3366,7 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
   );
 
   requestAnimationFrame(() => resizeCanvas());
+  requestAnimationFrame(() => loadInitialDrawing());
   renderPeerPreviews();
   window.addEventListener("resize", resizeCanvas);
   window.addEventListener("quark-online-preview-updated", renderPeerPreviews);
@@ -2892,7 +3492,29 @@ function mainMenu() {
   const screen = el("div", { class: "screen" },
     el("img", { class: "logo-img", src: "quarksketch_logo2.png", alt: "QuarkSketch" }),
     el("div", { class: "btn-group" },
-      el("button", { class: "btn-play",     onclick() { startRound(1); } }, "Single Player"),
+      el("button", {
+        class: "btn-play",
+        onclick() {
+          show(gameModeSelectorScreen(({ modeKey, durationSeconds }) => {
+            localRoundState.modeKey = modeKey;
+            localRoundState.durationSeconds = durationSeconds;
+            resetLocalMatchState();
+            startRound(1, {
+              modeKey,
+              roundDuration: durationSeconds,
+              topicKey: "any",
+            });
+          }, {
+            title: "Select Game Mode",
+            subtitle: "Pick your difficulty before the countdown begins.",
+            initialModeKey: localRoundState.modeKey || "hard",
+            includeFinishSketch: false,
+            onBack() {
+              show(mainMenu());
+            },
+          }));
+        },
+      }, "Single Player"),
       el("button", { class: "btn-multi",    onclick() { show(onlineMultiplayerScreen()); } }, "Multiplayer"),
       el("button", { class: "btn-history",  onclick() { show(historyScreen()); } }, "History"),
       el("button", { class: "btn-settings", onclick: toggleSettings }, "Settings"),

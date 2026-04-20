@@ -368,11 +368,35 @@ function fullscreenToggleBtn() {
 function onlineTopControls() {
   return el("div", { class: "online-top-controls" },
     themeToggleBtn(),
-    fullscreenToggleBtn(),
   );
 }
 
 applyTheme(getStoredTheme());
+
+// Force fullscreen on all devices
+function requestFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+}
+
+// Force landscape orientation on mobile
+function forceLandscapeOrientation() {
+  if (screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock('landscape').catch(() => {});
+  }
+}
+
+// Request fullscreen and landscape when page loads
+window.addEventListener('load', () => {
+  requestFullscreen();
+  forceLandscapeOrientation();
+});
+// Also try on first user interaction
+document.addEventListener('click', () => {
+  requestFullscreen();
+  forceLandscapeOrientation();
+}, { once: true });
 
 function getDefaultOnlineServerUrl() {
   if (window.location.protocol === "http:" || window.location.protocol === "https:") {
@@ -1121,8 +1145,8 @@ function onlineWaitingScreen() {
   const screen = el("div", { class: "screen online-waiting-screen" },
     el("div", { class: "online-card" },
       onlineTopControls(),
-      el("h2", { class: "online-title" }, "Waiting For Players"),
-      el("p", { class: "online-subtitle" }, "Your drawing is submitted."),
+      el("h2", { class: "online-title" }, "Spectator Mode"),
+      el("p", { class: "online-subtitle" }, "Your drawing is submitted. You can now watch other players."),
       el("p", { class: "online-progress" }, `Submitted: ${submitted}/${total}`),
       previewGallery,
       el("p", { class: "online-status" }, "Results will appear automatically when everyone is done."),
@@ -1411,6 +1435,16 @@ function settingsPanel(onClose) {
     el("div", { class: "setting-row" },
       el("span", {}, "SFX"),
       el("label", { class: "toggle" }, sfxInput, el("span", { class: "toggle-track" })),
+    ),
+    el("div", { class: "setting-row" },
+      el("span", {}, "Fullscreen"),
+      el("button", {
+        class: "theme-toggle-btn",
+        onclick() {
+          requestFullscreen();
+          forceLandscapeOrientation();
+        },
+      }, "Enter Fullscreen"),
     ),
     el("button", { class: "close-btn", onclick: onClose }, "Close"),
   );
@@ -2810,7 +2844,7 @@ function drawingScreen(round = 1, promptData = getRoundPrompt(), options = {}) {
 
   const peerPreviewTitle = el("p", { class: "peer-preview-title" }, "Other Players");
   const peerPreviewList = el("div", { class: "peer-preview-list" });
-  const peerPreviewPanel = el("div", { class: "peer-preview-panel", style: enablePeerPreview ? "" : "display:none;" },
+  const peerPreviewPanel = el("div", { class: "peer-preview-panel", style: "display:none;" },
     peerPreviewTitle,
     peerPreviewList,
   );
@@ -3215,18 +3249,30 @@ ctx.putImageData(imageData,0,0);
   canvas.addEventListener("touchmove",   draw,      { passive: false });
   canvas.addEventListener("touchend",    stopDraw,  { passive: false });
 
-  const colorPanel = el("div", { class: "color-panel", style: "display:none;" },
-    el("button", { class: "color-btn", style: "background:#1a1a2e;", onclick() { erasing = false; currentColor = "#1a1a2e"; colorPanel.style.display = "none"; } }),
-    el("button", { class: "color-btn", style: "background:#ff4d4d;", onclick() { erasing = false; currentColor = "#ff4d4d"; colorPanel.style.display = "none"; } }),
-    el("button", { class: "color-btn", style: "background:#3b82f6;", onclick() { erasing = false; currentColor = "#3b82f6"; colorPanel.style.display = "none"; } }),
-    el("button", { class: "color-btn", style: "background:#22c55e;", onclick() { erasing = false; currentColor = "#22c55e"; colorPanel.style.display = "none"; } }),
-    el("button", { class: "color-btn", style: "background:#facc15;", onclick() { erasing = false; currentColor = "#facc15"; colorPanel.style.display = "none"; } }),
-    el("button", { class: "color-btn", style: "background:#f97316;", onclick() { erasing = false; currentColor = "#f97316"; colorPanel.style.display = "none"; } }),
-    el("button", { class: "color-btn", style: "background:#a855f7;", onclick() { erasing = false; currentColor = "#a855f7"; colorPanel.style.display = "none"; } }),
-    el("button", { class: "color-btn", style: "background:#ec4899;", onclick() { erasing = false; currentColor = "#ec4899"; colorPanel.style.display = "none"; } }),
-    el("button", { class: "color-btn", style: "background:#06b6d4;", onclick() { erasing = false; currentColor = "#06b6d4"; colorPanel.style.display = "none"; } }),
-    el("button", { class: "color-btn", style: "background:#84cc16;", onclick() { erasing = false; currentColor = "#84cc16"; colorPanel.style.display = "none"; } }),
-    el("button", { class: "color-btn", style: "background:#f59e0b;", onclick() { erasing = false; currentColor = "#f59e0b"; colorPanel.style.display = "none"; } }),
+  // Gartic Phone-style color palette: 30 colors in rainbow order with common variations
+  const PALETTE_COLORS = [
+    "#000000", "#333333", "#666666", "#999999", "#cccccc",  // Neutrals: Black to Light Gray
+    "#ffffff", "#ff0000", "#cc0000", "#ff6b6b", "#ffa07a",  // White + Reds
+    "#ff8800", "#ffa500", "#ffff00", "#ffff99", "#00ff00",  // Oranges + Yellows + Lime
+    "#00cc00", "#008000", "#20b2aa", "#00ffff", "#87ceeb",  // Greens + Cyans + Sky Blue
+    "#0066cc", "#0000ff", "#000080", "#800080", "#ff00ff",  // Blues + Purples
+    "#ee82ee", "#ff1493", "#daa520", "#a52a2a", "#8b4513",  // Violet + Pink + Gold + Browns
+  ];
+
+  const colorPaletteButtons = PALETTE_COLORS.map((color) =>
+    el("button", {
+      class: "color-btn",
+      style: `background:${color};`,
+      title: color,
+      onclick() {
+        erasing = false;
+        currentColor = color;
+      }
+    })
+  );
+
+  const colorPanel = el("div", { class: "color-palette" },
+    ...colorPaletteButtons
   );
 
   const markerBtn = el("button", {
@@ -3237,12 +3283,12 @@ ctx.putImageData(imageData,0,0);
       lineMode = false;
       shapeMode = false;
       fillMode = false;
+      shapePanel.style.display = "none";
       fillBtn.classList.remove("tool-active");
       markerBtn.classList.add("tool-active");
       eraserBtn.classList.remove("tool-active");
       lineBtn.classList.remove("tool-active");
       shapeBtn.classList.remove("tool-active");
-      colorPanel.style.display = colorPanel.style.display === "none" ? "flex" : "none";
     }
   }, el("img", {
     src: "ico/pencil.png",
@@ -3259,12 +3305,12 @@ ctx.putImageData(imageData,0,0);
       lineMode = false;
       shapeMode = false;
       fillMode = false;
+      shapePanel.style.display = "none";
       fillBtn.classList.remove("tool-active");
       eraserBtn.classList.add("tool-active");
       markerBtn.classList.remove("tool-active");
       lineBtn.classList.remove("tool-active");
       shapeBtn.classList.remove("tool-active");
-      colorPanel.style.display = "none";
     }
   }, el("img", {
     src: "ico/erasor.png",
@@ -3273,21 +3319,21 @@ ctx.putImageData(imageData,0,0);
   })
 );
   const lineBtn = el("button", {
-  class: "tool-btn",
-  title: "Line Tool",
-  onclick() {
-    lineMode = true;
-    erasing = false;
-    shapeMode = false;
-    fillMode = false;
-    fillBtn.classList.remove("tool-active");
-    lineBtn.classList.add("tool-active");
-    shapeBtn.classList.remove("tool-active");
-    markerBtn.classList.remove("tool-active");
-    eraserBtn.classList.remove("tool-active");
-    colorPanel.style.display = "none";
-  }
-}, el("img", {
+    class: "tool-btn",
+    title: "Line Tool",
+    onclick() {
+      lineMode = true;
+      erasing = false;
+      shapeMode = false;
+      fillMode = false;
+      shapePanel.style.display = "none";
+      fillBtn.classList.remove("tool-active");
+      lineBtn.classList.add("tool-active");
+      shapeBtn.classList.remove("tool-active");
+      markerBtn.classList.remove("tool-active");
+      eraserBtn.classList.remove("tool-active");
+    }
+  }, el("img", {
     src: "ico/line.png",
     alt: "Line",
     class: "tool-icon",
@@ -3315,8 +3361,21 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
       markerBtn.classList.remove("tool-active");
       eraserBtn.classList.remove("tool-active");
       lineBtn.classList.remove("tool-active");
-      colorPanel.style.display = "none";
-      shapePanel.style.display = shapePanel.style.display === "none" ? "flex" : "none";
+
+      if (shapePanel.style.display === "none") {
+        const rect = shapeBtn.getBoundingClientRect();
+        const panelWidth = 230;
+        const panelHeight = 110;
+        const desiredLeft = rect.right + 12;
+        const desiredTop = rect.top - 12;
+        const clampedLeft = Math.max(8, Math.min(desiredLeft, window.innerWidth - panelWidth - 8));
+        const clampedTop = Math.max(8, Math.min(desiredTop, window.innerHeight - panelHeight - 8));
+        shapePanel.style.left = `${clampedLeft}px`;
+        shapePanel.style.top = `${clampedTop}px`;
+        shapePanel.style.display = "flex";
+      } else {
+        shapePanel.style.display = "none";
+      }
     }
   }, "□");
 
@@ -3328,12 +3387,12 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
       erasing =  false;
       lineMode = false;
       shapeMode = false;
+      shapePanel.style.display = "none";
       fillBtn.classList.add("tool-active");
       shapeBtn.classList.remove("tool-active");
       markerBtn.classList.remove("tool-active");
       eraserBtn.classList.remove("tool-active");
       lineBtn.classList.remove("tool-active");
-      colorPanel.style.display = "none";
     }
   }, el("img", {
     src: "ico/bucket.png",
@@ -3365,21 +3424,33 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
       el("span", { class: "size-label-large" }),
       el("span", { class: "size-label-small" }),
     ),
-    el("input", { type: "range", min: "2", max: "20", value: brushSize, class: "size-slider", oninput: (e) => { brushSize = parseInt(e.target.value); updateBrushPreview(); } }),
+    el("input", { type: "range", min: "2", max: "20", value: brushSize, class: "size-slider", oninput: (e) => { brushSize = parseInt(e.target.value); } }),
   );
 
   const sizeBtn = el("button", {
     class: "tool-btn",
     title: "Brush Size",
     onclick() {
-      updateBrushPreview();
       sizePanel.style.display = sizePanel.style.display === "none" ? "flex" : "none";
     }
   }, el("div", { class: "brush-size-preview", style: `width:20px; height:20px;` }));
 
-  function updateBrushPreview() {
-    // Preview is fixed size for consistency
-  }
+  const brushSizeBar = el("div", { class: "brush-size-bar" },
+    el("div", { class: "brush-size-label" }, "Size"),
+    el("input", { 
+      type: "range", 
+      min: "2", 
+      max: "20", 
+      value: brushSize, 
+      class: "brush-size-slider-vertical",
+      oninput: (e) => { 
+        brushSize = parseInt(e.target.value);
+        const display = document.getElementById("brushSizeDisplay");
+        if (display) display.textContent = brushSize;
+      } 
+    }),
+    el("div", { class: "brush-size-display", id: "brushSizeDisplay" }, String(brushSize))
+  );
 
   const undoBtn = el("button", { class: "tool-btn", title: "Undo", onclick: undo }, "↶");
   const redoBtn = el("button", { class: "tool-btn", title: "Redo", onclick: redo }, "↷");
@@ -3390,25 +3461,21 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
     onclick() { endRound("submit"); }
   }, "✔ Submit");
 
-  const markerGroup = el("div", { style: "display:flex; flex-direction:column; align-items:center;" },
+  const toolsGrid = el("div", { class: "tools-grid" },
     markerBtn,
-    colorPanel,
-  );
-
-  const sidebar = el("div", { class: "tool-sidebar" },
-    markerGroup,
-    sizeBtn,
-    sizePanel,
     eraserBtn,
     fillBtn,
     lineBtn,
-    el("div", { style: "display:flex; flex-direction:column; align-items:center;" },
-      shapeBtn,
-      shapePanel,
-    ),
+    shapeBtn,
     undoBtn,
     redoBtn,
     clearBtn,
+  );
+
+  const sidebar = el("div", { class: "tool-sidebar" },
+    colorPanel,
+    toolsGrid,
+    sizePanel,
   );
 
   const backBtn = el("button", {
@@ -3442,13 +3509,14 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
   const screen = el("div", { class: "draw-screen" },
     sidebar,
     el("div", { class: "canvas-wrap" }, canvas),
-    peerPreviewPanel,
+    shapePanel,
     timerBox,
     drawPrompt,
     el("div", { class: "round-badge draw-round-badge" }, `Round ${round}`),
     backBtn,
     hostEndRoundBtn,
     submitBtn,
+    brushSizeBar,
   );
 
   requestAnimationFrame(() => resizeCanvas());

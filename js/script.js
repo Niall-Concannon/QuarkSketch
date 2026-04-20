@@ -165,6 +165,14 @@ const GAME_MODES = Object.freeze([
   },
 ]);
 
+const MODE_IMAGE_SOURCES = Object.freeze({
+  easy: ["easy mode.png", "easy.png"],
+  medium: ["medium mode.png", "medium.png"],
+  hard: ["hard mode.png", "hard.png"],
+  hardcore: ["hardcore mode.png", "hardcore.png"],
+  finish_sketch: ["custom mode.png"],
+});
+
 const localRoundState = {
   modeKey: "hard",
   durationSeconds: 30,
@@ -210,6 +218,32 @@ function createPromptFromParts(subject, action) {
     action: safeAction,
     text: `Draw ${withPromptArticle(safeSubject)} ${safeAction}`,
   };
+}
+
+function modePreviewImage(modeKey, modeLabel) {
+  const sources = Array.isArray(MODE_IMAGE_SOURCES[modeKey]) ? MODE_IMAGE_SOURCES[modeKey].slice() : [];
+  const firstSrc = sources.shift();
+
+  const image = el("img", {
+    class: "mode-card-image",
+    alt: `${modeLabel} mode preview`,
+    src: firstSrc || "",
+  });
+
+  image.onerror = () => {
+    const next = sources.shift();
+    if (!next) {
+      image.style.display = "none";
+      return;
+    }
+    image.src = next;
+  };
+
+  if (!firstSrc) {
+    image.style.display = "none";
+  }
+
+  return image;
 }
 
 function buildUniquePromptEntries(playerIds, topicKey = "any") {
@@ -1647,6 +1681,12 @@ function gameModeSelectorScreen(onConfirm, options = {}) {
 
   const cards = visibleModes.map((mode) => {
     const durationText = formatSecondsLabel(mode.durationSeconds);
+    const preview = modePreviewImage(mode.key, mode.label);
+    const copy = el("div", { class: "mode-card-copy" },
+      el("span", { class: "mode-card-title" }, mode.label),
+      el("span", { class: "mode-card-time" }, durationText),
+      el("span", { class: "mode-card-desc" }, mode.description),
+    );
     const card = el("button", {
       class: `mode-card ${mode.key === initialMode ? "active" : ""}`,
       onclick() {
@@ -1655,12 +1695,48 @@ function gameModeSelectorScreen(onConfirm, options = {}) {
         card.classList.add("active");
       },
     },
-      el("span", { class: "mode-card-title" }, mode.label),
-      el("span", { class: "mode-card-time" }, durationText),
-      el("span", { class: "mode-card-desc" }, mode.description),
+      copy,
+      preview,
     );
     return card;
   });
+
+  const modeTrack = el("div", { class: "mode-grid" }, ...cards);
+  const leftArrow = el("button", {
+    class: "mode-scroll-btn mode-scroll-left",
+    onclick() {
+      modeViewport.scrollBy({ left: -280, behavior: "smooth" });
+    },
+  }, "<");
+  const rightArrow = el("button", {
+    class: "mode-scroll-btn mode-scroll-right",
+    onclick() {
+      modeViewport.scrollBy({ left: 280, behavior: "smooth" });
+    },
+  }, ">");
+
+  const modeViewport = el("div", { class: "mode-grid-viewport" }, modeTrack);
+  const modeScrollHint = el("p", { class: "mode-scroll-hint" }, "Scroll for more options");
+
+  function updateModeArrows() {
+    const maxScrollLeft = Math.max(0, modeViewport.scrollWidth - modeViewport.clientWidth);
+    const atStart = modeViewport.scrollLeft <= 2;
+    const atEnd = modeViewport.scrollLeft >= maxScrollLeft - 2;
+    leftArrow.disabled = atStart;
+    rightArrow.disabled = atEnd;
+
+    const canScroll = maxScrollLeft > 4;
+    modeScrollHint.style.visibility = canScroll ? "visible" : "hidden";
+    modeScrollHint.style.opacity = canScroll ? "0.8" : "0";
+  }
+
+  modeViewport.addEventListener("scroll", updateModeArrows, { passive: true });
+  modeViewport.addEventListener("wheel", (event) => {
+    if (Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
+    event.preventDefault();
+    modeViewport.scrollBy({ left: event.deltaY, behavior: "auto" });
+  }, { passive: false });
+  window.addEventListener("resize", updateModeArrows);
 
   const confirmBtn = el("button", {
     class: "btn-play",
@@ -1688,13 +1764,23 @@ function gameModeSelectorScreen(onConfirm, options = {}) {
     el("div", { class: "mode-select-card" },
       el("h2", { class: "mode-select-title" }, title),
       el("p", { class: "mode-select-subtitle" }, subtitle),
-      el("div", { class: "mode-grid" }, ...cards),
+      el("div", { class: "mode-grid-row" },
+        leftArrow,
+        modeViewport,
+        rightArrow,
+      ),
+      modeScrollHint,
       el("div", { class: "btn-group mode-select-actions" },
         confirmBtn,
         backBtn,
       ),
     ),
   );
+
+  setTimeout(updateModeArrows, 0);
+  screen.__cleanup = () => {
+    window.removeEventListener("resize", updateModeArrows);
+  };
 
   addUiClickSfxToButtons(screen);
   return screen;

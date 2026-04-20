@@ -210,6 +210,7 @@ button:active {
 .toggle input:checked + .toggle-track::after { transform: translateX(24px); }
 
 /* ── Mobile styles for settings panel ───────────────────────── */
+/* ── Mobile styles for settings panel ───────────────────────── */
 @media (max-width: 1000px) {
   .settings-panel {
     position: fixed;
@@ -217,15 +218,18 @@ button:active {
     left: 50%;
     transform: translate(-50%, -50%);
     z-index: 1000;
-    max-width: 360px;
-    width: 95vw;
-    max-height: 90vh;
-    overflow-y: auto;
+    width: min(92vw, 340px);
+    max-height: none;
+    height: auto;
+    overflow: hidden;
     animation: fadeIn 0.3s ease-out;
     background: #ffffff !important;
-    border: 2px solid #ffffff;
+    border: 2px solid #dddddd;
+    padding: 0.9rem 1rem;
+    gap: 0.55rem;
+    touch-action: none;
   }
-  
+
   .settings-panel::before {
     content: '';
     position: fixed;
@@ -236,27 +240,165 @@ button:active {
     background: rgba(0, 0, 0, 0.3);
     z-index: -1;
   }
-  
+
+  .settings-panel h3 {
+    font-size: 0.95rem;
+    margin-bottom: 0.1rem;
+  }
+
+  .setting-row {
+    font-size: 0.85rem;
+    padding: 0.1rem 0;
+  }
+
+  .setting-vol-row {
+    padding: 0 0 0.15rem 0;
+    gap: 0.5rem;
+  }
+
+  .vol-label {
+    font-size: 0.75rem;
+    min-width: 2.4rem;
+  }
+
+  .close-btn {
+    padding: 0.4rem;
+    font-size: 0.85rem;
+    margin-top: 0.1rem;
+  }
+
+  .theme-toggle-btn {
+    font-size: 0.72rem !important;
+    padding: 0.3rem 0.5rem !important;
+    min-height: 32px !important;
+  }
+
+  .toggle {
+    width: 42px;
+    height: 22px;
+  }
+
+  .toggle-track::after {
+    width: 14px;
+    height: 14px;
+  }
+
+  .toggle input:checked + .toggle-track::after {
+    transform: translateX(20px);
+  }
+
   .btn-group {
     flex-direction: row;
     flex-wrap: wrap;
     gap: 0.5rem;
     justify-content: center;
   }
-  
+
   .btn-group button {
     flex: 1;
     min-width: 120px;
     max-width: 150px;
   }
-  
+
   .screen {
     padding: 1rem 2rem;
     gap: 1rem;
   }
-  
+
   .logo-img {
     max-width: 600px;
+  }
+}
+
+/* ── Volume sliders in settings ─────────────────── */
+.setting-vol-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.1rem 0 0.3rem 0;
+}
+
+.setting-vol-icon {
+  font-size: 1rem;
+  width: 1.4rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.vol-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #44A8FF 0%, #a855f7 100%);
+  outline: none;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--text);
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.vol-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 3px 10px rgba(68, 168, 255, 0.35);
+}
+
+.vol-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--text);
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.vol-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #44A8FF 0%, #a855f7 100%);
+}
+
+.vol-label {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--text);
+  min-width: 2.8rem;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* Mobile: make thumbs bigger for fat fingers */
+@media (max-width: 1000px) {
+  .vol-slider::-webkit-slider-thumb {
+    width: 28px;
+    height: 28px;
+  }
+
+  .vol-slider::-moz-range-thumb {
+    width: 28px;
+    height: 28px;
+  }
+
+  .vol-slider {
+    height: 8px;
+  }
+
+  .setting-vol-row {
+    gap: 0.75rem;
   }
 }
 

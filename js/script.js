@@ -4,6 +4,8 @@
 let bgmTrack = null;
 let sfxEnabled = true;
 let musicEnabled = false; // music off by default
+let musicVolume = 0.2;  // 0.0 – 1.0
+let sfxVolume = 0.7;    // 0.0 – 1.0
 const CELEBRATION_SFX_SOURCES = ["audio/win31.mp3", "audio/track1.mp3"];
 const UI_CLICK_SFX_SOURCES = ["audio/typewriter.mp3", "audio/track1.mp3"];
 const ROUND_COUNTDOWN_SFX_SOURCES = [
@@ -39,7 +41,7 @@ function createAudioFromSources(sources, options = {}, onReady, onExhausted) {
 function playCelebrationSfx() {
   if (!sfxEnabled) return;
 
-  createAudioFromSources(CELEBRATION_SFX_SOURCES, { volume: 0.7 }, (sfx, tryNext) => {
+  createAudioFromSources(CELEBRATION_SFX_SOURCES, { volume: sfxVolume }, (sfx, tryNext) => {
     sfx.play().catch(() => tryNext());
   });
 }
@@ -1394,32 +1396,55 @@ function rotateMsg() {
 // ─────────────────────────────────────────────────────────────────
 function settingsPanel(onClose) {
   const darkInput = el("input", { type: "checkbox" });
-
   if (document.body.classList.contains("dark")) darkInput.checked = true;
-
   darkInput.addEventListener("change", () => {
     document.body.classList.toggle("dark", darkInput.checked);
   });
 
-  // music toggle
   const musicInput = el("input", { type: "checkbox" });
   musicInput.checked = musicEnabled;
   musicInput.addEventListener("change", () => {
     musicEnabled = musicInput.checked;
     if (bgmTrack) {
-      if (musicEnabled) {
-        bgmTrack.play().catch(() => {});
-      } else {
-        bgmTrack.pause();
-      }
+      if (musicEnabled) bgmTrack.play().catch(() => {});
+      else bgmTrack.pause();
     }
   });
 
-  // sfx toggle
   const sfxInput = el("input", { type: "checkbox" });
   sfxInput.checked = sfxEnabled;
   sfxInput.addEventListener("change", () => {
     sfxEnabled = sfxInput.checked;
+  });
+
+  // Music volume slider
+  const musicVolLabel = el("span", { class: "vol-label" }, `${Math.round(musicVolume * 100)}%`);
+  const musicVolSlider = el("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    value: String(Math.round(musicVolume * 100)),
+    class: "vol-slider",
+  });
+  musicVolSlider.addEventListener("input", () => {
+    musicVolume = parseInt(musicVolSlider.value) / 100;
+    musicVolLabel.textContent = `${musicVolSlider.value}%`;
+    if (bgmTrack) bgmTrack.volume = musicVolume;
+  });
+
+  // SFX volume slider
+  const sfxVolLabel = el("span", { class: "vol-label" }, `${Math.round(sfxVolume * 100)}%`);
+  const sfxVolSlider = el("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    value: String(Math.round(sfxVolume * 100)),
+    class: "vol-slider",
+  });
+  sfxVolSlider.addEventListener("input", () => {
+    sfxVolume = parseInt(sfxVolSlider.value) / 100;
+    sfxVolLabel.textContent = `${sfxVolSlider.value}%`;
+    if (uiClickSfx) uiClickSfx.volume = sfxVolume * 0.5; // click sfx is quieter
   });
 
   const panel = el("div", { class: "settings-panel" },
@@ -1432,9 +1457,19 @@ function settingsPanel(onClose) {
       el("span", {}, "Music"),
       el("label", { class: "toggle" }, musicInput, el("span", { class: "toggle-track" })),
     ),
+    el("div", { class: "setting-vol-row" },
+      el("span", { class: "setting-vol-icon" }, "🎵"),
+      musicVolSlider,
+      musicVolLabel,
+    ),
     el("div", { class: "setting-row" },
       el("span", {}, "SFX"),
       el("label", { class: "toggle" }, sfxInput, el("span", { class: "toggle-track" })),
+    ),
+    el("div", { class: "setting-vol-row" },
+      el("span", { class: "setting-vol-icon" }, "🔊"),
+      sfxVolSlider,
+      sfxVolLabel,
     ),
     el("div", { class: "setting-row" },
       el("span", {}, "Fullscreen"),
@@ -1495,7 +1530,7 @@ function countdownTimer(onDone, options = {}) {
   if (sfxEnabled) {
     createAudioFromSources(
       ROUND_COUNTDOWN_SFX_SOURCES,
-      { volume: 0.62 },
+      { volume: sfxVolume },
       (audio, tryNext) => {
         countdownSfx = audio;
         audio.play()
@@ -2910,7 +2945,7 @@ let shapeSnapshot = null;
     if (warningSfxStarted || !sfxEnabled) return;
     warningSfxStarted = true;
 
-    createAudioFromSources(TIME_WARNING_SFX_SOURCES, { volume: 0.52, loop: true }, (audio, tryNext) => {
+    createAudioFromSources(TIME_WARNING_SFX_SOURCES, { volume: sfxVolume, loop: true }, (audio, tryNext) => {
       warningSfx = audio;
       audio.play().catch(() => {
         warningSfx = null;
@@ -3628,7 +3663,7 @@ function mainMenu() {
 
   bgmTrack = new Audio();
   bgmTrack.src = './audio/track1.mp3';
-  bgmTrack.volume = 0.2;
+  bgmTrack.volume = musicVolume;
   bgmTrack.loop = true;
 
 // only auto-play if music is enabled

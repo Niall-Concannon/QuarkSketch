@@ -2896,6 +2896,7 @@ let shapeSnapshot = null;
   let fillMode = false;
   let warningSfx = null;
   let warningSfxStarted = false;
+  let screen = null;
 
   function stopWarningSfx() {
     if (!warningSfx) return;
@@ -2918,7 +2919,13 @@ let shapeSnapshot = null;
     });
   }
 
+  function syncMobileDrawScale() {
+    if (!screen) return;
+    screen.style.removeProperty("--mobile-draw-scale");
+  }
+
   function resizeCanvas() {
+    syncMobileDrawScale();
     const rect = canvas.getBoundingClientRect();
     const snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
     canvas.width  = rect.width;
@@ -3506,7 +3513,7 @@ const shapePanel = el("div", { class: "shape-panel", style: "display:none;" },
       }, "Host End Round")
     : null;
 
-  const screen = el("div", { class: "draw-screen" },
+  screen = el("div", { class: "draw-screen" },
     sidebar,
     el("div", { class: "canvas-wrap" }, canvas),
     shapePanel,

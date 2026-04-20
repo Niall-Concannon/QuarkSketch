@@ -211,43 +211,6 @@ button:active {
 
 /* ── Mobile styles for settings panel ───────────────────────── */
 @media (max-width: 1000px) {
-  .tool-sidebar {
-    width: 160px;
-    max-width: 160px;
-    padding: 6px;
-    gap: 10px;
-  }
-
-  .color-palette {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 4px;
-  }
-
-  .color-btn {
-    width: 42px;
-    height: 42px;
-    border-radius: 3px;
-    flex-shrink: 0;
-  }
-
-  .tools-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 4px;
-    padding: 0 0 6px 0;
-    overflow: hidden;
-  }
-
-  .tool-btn {
-    width: 64px;
-    height: 64px;
-    font-size: 1rem;
-  }
-
-  .tool-icon {
-    width: 18px;
-    height: 18px;
-  }
-
   .settings-panel {
     position: fixed;
     top: 50%;
@@ -308,7 +271,7 @@ button:active {
 }
 
 .tool-sidebar {
-  width: 180px;
+  width: clamp(160px, 22vw, 180px);
   max-width: 180px;
   height: 100%;
   background: var(--surface);
@@ -316,8 +279,8 @@ button:active {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  padding: 8px;
-  gap: 12px;
+  padding: clamp(4px, 1vw, 8px);
+  gap: clamp(8px, 2vw, 12px);
   flex-shrink: 0;
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
   overflow-y: auto;
@@ -334,8 +297,8 @@ button:active {
 .tools-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 5px;
-  padding: 0 0 8px 0;
+  gap: clamp(3px, 1vw, 5px);
+  padding: 0 0 clamp(5px, 1vw, 8px) 0;
   flex: 1 1 auto;
   align-content: start;
   align-items: start;
@@ -344,8 +307,8 @@ button:active {
 }
 
 .tool-btn {
-  width: 74px;
-  height: 74px;
+  width: clamp(56px, 9vw, 74px);
+  height: clamp(56px, 9vw, 74px);
   border: 2px solid transparent;
   border-radius: 6px;
   background: var(--bg);
@@ -372,8 +335,8 @@ button:active {
 }
 
 .tool-icon {
-  width: 20px;
-  height: 20px;
+  width: clamp(14px, 2.5vw, 20px);
+  height: clamp(14px, 2.5vw, 20px);
   display: block;
   pointer-events: none;
 }
@@ -397,7 +360,7 @@ button:active {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-auto-rows: 1fr;
-  gap: 5px;
+  gap: clamp(3px, 1vw, 5px);
   padding: 0;
   background: transparent;
   width: 100%;
@@ -406,8 +369,8 @@ button:active {
 }
 
 .color-btn {
-  width: 48px;
-  height: 48px;
+  width: clamp(36px, 7vw, 48px);
+  height: clamp(36px, 7vw, 48px);
   border: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 4px;
   cursor: pointer;
@@ -439,7 +402,7 @@ button:active {
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   position: absolute;
-  left: 190px;
+  left: calc(clamp(160px, 22vw, 180px) + 10px);
   top: 50%;
   transform: translateY(-50%);
   z-index: 10;
@@ -452,75 +415,7 @@ button:active {
   }
 }
 
-@media (max-width: 640px) {
-  .tool-sidebar {
-    width: 140px;
-    max-width: 140px;
-    padding: 5px;
-    gap: 8px;
-  }
 
-  .color-palette {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 3px;
-  }
-
-  .color-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 2px;
-    flex-shrink: 0;
-  }
-
-  .tools-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 3px;
-    padding: 0 0 5px 0;
-    overflow: hidden;
-  }
-
-  .tool-btn {
-    width: 56px;
-    height: 56px;
-    font-size: 0.9rem;
-  }
-
-  .tool-icon {
-    width: 16px;
-    height: 16px;
-  }
-
-  .size-panel {
-    left: 150px;
-  }
-}
-
-@media (max-width: 640px) {
-  .brush-size-bar {
-    right: 12px;
-    padding: 12px 8px;
-    gap: 8px;
-    border-width: 1px;
-  }
-
-  .brush-size-slider-vertical {
-    height: 100px;
-    width: 6px;
-  }
-
-  .brush-size-label {
-    font-size: 0.65rem;
-  }
-
-  .brush-size-display {
-    font-size: 0.9rem;
-    padding: 3px 6px;
-  }
-
-  .canvas-wrap {
-    margin-right: 120px;
-  }
-}
 
 .size-labels {
   display: flex;
@@ -608,6 +503,7 @@ button:active {
   flex: 1;
   height: 100%;
   background: #ffffff;
+  margin-right: clamp(60px, 8vw, 80px);
 }
 
 .draw-canvas {
@@ -665,14 +561,14 @@ button:active {
 
 .brush-size-bar {
   position: fixed;
-  right: 8px;
+  right: clamp(4px, 1vw, 8px);
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 6px 4px;
+  gap: clamp(6px, 1vw, 12px);
+  padding: clamp(8px, 1.5vw, 12px) clamp(4px, 0.8vw, 8px);
   background: var(--surface);
   border: 1px solid var(--text);
   border-radius: 6px;
@@ -682,7 +578,7 @@ button:active {
 }
 
 .brush-size-label {
-  font-size: 0.85rem;
+  font-size: clamp(0.65rem, 1.5vw, 0.85rem);
   font-weight: bold;
   color: var(--text);
   text-transform: uppercase;
@@ -690,8 +586,8 @@ button:active {
 }
 
 .brush-size-slider-vertical {
-  width: 6px;
-  height: 90px;
+  width: clamp(4px, 0.8vw, 6px);
+  height: clamp(80px, 12vw, 90px);
   writing-mode: bt-lr;
   -webkit-appearance: slider-vertical;
   appearance: slider-vertical;
@@ -721,13 +617,13 @@ button:active {
 }
 
 .brush-size-display {
-  font-size: 1.2rem;
+  font-size: clamp(0.9rem, 2vw, 1.2rem);
   font-weight: bold;
   color: var(--text);
   min-width: 30px;
   text-align: center;
   background: var(--bg);
-  padding: 4px 8px;
+  padding: clamp(3px, 0.8vw, 8px) clamp(6px, 1.2vw, 12px);
   border-radius: 6px;
   border: 1px solid var(--text);
 }
@@ -812,43 +708,7 @@ button:active {
 .draw-round-badge {
   position: absolute;
   top: 0.75rem;
-  left: 200px; /* clear the sidebar */
-}
-
-@media (max-width: 1000px) {
-  .draw-round-badge {
-    left: 180px;
-  }
-}
-
-@media (max-width: 1000px) {
-  .brush-size-bar {
-    right: 15px;
-    padding: 14px 10px;
-    gap: 10px;
-  }
-
-  .brush-size-slider-vertical {
-    height: 120px;
-  }
-
-  .brush-size-label {
-    font-size: 0.75rem;
-  }
-
-  .brush-size-display {
-    font-size: 1rem;
-  }
-
-  .canvas-wrap {
-    margin-right: 140px;
-  }
-}
-
-@media (max-width: 640px) {
-  .draw-round-badge {
-    left: 160px;
-  }
+  left: calc(clamp(160px, 22vw, 180px) + 20px);
 }
 
 /* Title + badge sit side by side on the results screen */
@@ -1651,85 +1511,194 @@ body.dark .history-chip {
 }
 
 @media (max-width: 1000px) {
+  .draw-screen {
+    width: 100vw;
+    height: 100dvh;
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    display: grid;
+    grid-template-columns: 132px minmax(0, 1fr) 62px;
+    align-items: stretch;
+  }
+
   .tool-sidebar {
-    width: 140px;
+    grid-column: 1;
+    width: 100%;
+    max-width: 132px;
+    padding: 6px 6px 5px;
+    gap: 2px;
+    overflow: hidden;
+  }
+
+  .tool-sidebar .color-palette {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: 30px;
+    gap: 2px;
+    max-height: calc(30px * 5 + 8px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .tool-sidebar .color-palette::-webkit-scrollbar {
+    width: 0;
+  }
+
+  .tool-sidebar .color-palette::-webkit-scrollbar-thumb {
+    background: rgba(26, 26, 46, 0.35);
+    border-radius: 999px;
   }
 
   .tools-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 3px;
-    padding: 3px;
+    gap: 2px;
+    padding: 0 0 4px 0;
+    margin-top: 12px;
+    min-height: 0;
+    overflow-y: hidden;
+    overflow-x: hidden;
   }
 
   .tool-btn {
     width: 44px;
     height: 44px;
-    font-size: 1.1rem;
+    border-radius: 4px;
+    font-size: 0.95rem;
   }
 
   .tool-icon {
-    width: 20px;
-    height: 20px;
-  }
-
-  .color-palette {
-    min-height: 195px;
-    max-height: 195px;
-    padding: 4px;
+    width: 18px;
+    height: 18px;
   }
 
   .color-btn {
-    width: 23px;
-    height: 23px;
+    width: 100%;
+    height: 100%;
+    justify-self: stretch;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   }
 
-  .shape-panel, .size-panel {
-    left: 150px;
-  }
-
-  .size-slider {
-    width: 40px;
+  .canvas-wrap {
+    grid-column: 2;
+    flex: initial;
+    width: 100%;
+    height: 100%;
+    margin-right: 0;
+    margin-left: 0;
+    justify-self: center;
+    min-width: 0;
   }
 
   .size-panel {
-    width: 70px;
+    left: 138px;
+    width: 100px;
+    padding: 7px;
+    border-radius: 12px;
+    gap: 7px;
+  }
+
+  .size-slider {
+    width: 82px;
+    height: 8px;
+  }
+
+  .size-slider::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+  }
+
+  .size-slider::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
   }
 
   .size-labels {
-    gap: 40px;
+    gap: 58px;
+    font-size: 0.85rem;
   }
 
   .draw-round-badge {
-    left: 150px;
+    left: 138px;
+    font-size: 0.9rem;
+    padding: 0.3rem 0.7rem;
   }
 
   .game-timer {
-    left: 50%;
-    transform: translateX(-50%);
     top: 0.5rem;
-    font-size: 0.9rem;
-    padding: 0.3rem 0.7rem;
+    font-size: 0.95rem;
+    padding: 0.35rem 0.75rem;
   }
 
   .back-btn {
     top: 0.5rem;
     right: 0.5rem;
-    padding: 0.3rem 0.7rem;
+    font-size: 0.95rem;
+    padding: 0.35rem 0.75rem;
+  }
+
+  .brush-size-bar {
+    grid-column: 3;
+    position: relative;
+    right: auto;
+    top: auto;
+    transform: none;
+    align-self: center;
+    justify-self: center;
+    gap: 8px;
+    padding: 7px 5px;
+    border-width: 2px;
+    border-radius: 10px;
+  }
+
+  .brush-size-label {
+    font-size: 0.82rem;
+  }
+
+  .brush-size-slider-vertical {
+    width: 8px;
+    height: min(32dvh, 170px);
+  }
+
+  .brush-size-slider-vertical::-webkit-slider-thumb {
+    width: 20px;
+    height: 20px;
+    border-width: 2px;
+  }
+
+  .brush-size-slider-vertical::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-width: 2px;
+  }
+
+  .brush-size-display {
     font-size: 0.9rem;
+    min-width: 34px;
+    padding: 5px 6px;
   }
 
   .submit-btn {
-    bottom: 15px;
-    right: 15px;
-    padding: 14px 22px;
-    font-size: 18px;
+    bottom: 14px;
+    right: 8px;
+    min-height: 46px;
+    min-width: 98px;
+    padding: 9px 10px;
+    font-size: 0.82rem;
+    border-radius: 14px;
   }
 
   .draw-prompt {
-    bottom: 0.6rem;
-    width: calc(100vw - 160px);
-    font-size: 0.85rem;
-    padding: 0.4rem 0.7rem;
+    bottom: 0.7rem;
+    width: min(640px, calc(100% - 198px));
+    font-size: 0.86rem;
+    padding: 0.42rem 0.7rem;
   }
 
   .prompt-card {
@@ -2387,7 +2356,7 @@ body.dark .online-reaction-btn.active {
   }
 
   .draw-prompt {
-    width: calc(100vw - 220px);
+    width: min(600px, calc(100% - 198px));
   }
 }
 

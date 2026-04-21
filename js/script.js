@@ -168,11 +168,11 @@ const GAME_MODES = Object.freeze([
 ]);
 
 const MODE_IMAGE_SOURCES = Object.freeze({
-  easy: ["easy mode.png", "easy.png"],
-  medium: ["medium mode.png", "medium.png"],
-  hard: ["hard mode.png", "hard.png"],
-  hardcore: ["hardcore mode.png", "hardcore.png"],
-  finish_sketch: ["custom mode.png"],
+  easy: ["./img/easy mode.png",],
+  medium: ["./img/medium mode.png",],
+  hard: ["./img/hard mode.png",],
+  hardcore: ["./img/hardcore mode.png",],
+  finish_sketch: ["./img/custom mode.png"],
 });
 
 const localRoundState = {

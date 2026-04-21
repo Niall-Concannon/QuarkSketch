@@ -3205,6 +3205,13 @@ ctx.putImageData(imageData,0,0);
     const img = new Image();
     img.src = undoStack.pop();
     img.onload = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(img, 0, 0); paintWhiteBackdrop(); };
+    
+
+    document.addEventListener("keydown", (e) => {
+      if(e.key.toLowerCase() == "z" && e.ctrlKey){
+        undo();
+      }
+    })
   }
 
   function redo() {
@@ -3213,7 +3220,13 @@ ctx.putImageData(imageData,0,0);
     const img = new Image();
     img.src = redoStack.pop();
     img.onload = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(img, 0, 0); paintWhiteBackdrop(); };
-  }
+    
+    document.addEventListener("keydown", (f) => {
+      if(f.key.toLowerCase() == "y" && f.ctrlKey){
+        redo();
+      }
+  })
+}
 
   // ── End round — capture canvas and go to results ──
   function endRound(reason) {

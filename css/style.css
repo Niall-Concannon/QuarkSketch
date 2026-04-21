@@ -15,6 +15,50 @@ body.dark {
   --text:    #f0f0ff;
 }
 
+body.dark .tool-btn {
+  background: #2a2a42;
+  border-color: rgba(240, 240, 255, 0.18);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+body.dark .tool-btn:hover {
+  background: #333355;
+  border-color: rgba(240, 240, 255, 0.35);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+body.dark .tool-active {
+  background: linear-gradient(135deg, #44A8FF 0%, #60b9ff 100%);
+  border-color: #2d7dd2;
+  box-shadow: 0 4px 14px rgba(68, 168, 255, 0.45);
+}
+
+body.dark .color-btn {
+  border-color: rgba(240, 240, 255, 0.3);
+  box_shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+body.dark .color-btn:hover {
+  border-color: rgba(240, 240, 255, 0.65);
+  box_shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+}
+
+body.dark .shape-panel {
+  background: #1e1e32;
+  border-color: rgba(240, 240, 255, 0.2);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+
+body.dark .size-panel {
+  background: #1e1e32;
+  border-color: rgba(240, 240, 255, 0.2);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+body.dark .tool-sidebar {
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.4);
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {

@@ -81,7 +81,7 @@ QuarkSketch follows a **client-server architecture**:
 - GitHub Repository: https://github.com/Niall-Concannon/QuarkSketch
 - Jira Board: https://atu-team-sa3.atlassian.net/jira/software/projects/SCRUM/boards/1 
 - OneNote Documentation: https://atlantictu-my.sharepoint.com/:o:/r/personal/g00436648_atu_ie/Documents/Documents/OneNote%20Notebooks/QuarkStack?d=w10fa751e6a8646c5835a779800725507&csf=1&web=1&e=rjEe1X
-- Demo Video: TO BE MADE
+- Demo Video: https://atlantictu.sharepoint.com/:v:/r/sites/Student-QuarkStack/Shared%20Documents/Comms/Video%20Demo%20QuarkSketch.mp4?csf=1&web=1&e=GPs0ww
 
 ---
 
